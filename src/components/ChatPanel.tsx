@@ -165,6 +165,8 @@ export function ChatPanel() {
         {error && <p className="mb-2 rounded-md bg-red-500/10 px-3 py-1.5 text-xs text-red-400">{error}</p>}
         <div className="flex items-end gap-2">
           <textarea
+            id="chat-input"
+            name="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

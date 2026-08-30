@@ -44,6 +44,8 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         <label className="mb-1 block text-xs text-zinc-400">API Key</label>
         <div className="mb-3 flex gap-2">
           <input
+            id="provider-api-key"
+            name="provider-api-key"
             type={showKey ? 'text' : 'password'}
             value={active.apiKey}
             onChange={(e) => updateProvider(active.id, { apiKey: e.target.value })}
@@ -62,6 +64,8 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
         <label className="mb-1 block text-xs text-zinc-400">Base URL</label>
         <input
+          id="provider-base-url"
+          name="provider-base-url"
           type="text"
           value={active.baseURL}
           onChange={(e) => updateProvider(active.id, { baseURL: e.target.value })}
@@ -73,6 +77,8 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
         <label className="mb-1 block text-xs text-zinc-400">模型</label>
         <input
+          id="provider-model"
+          name="provider-model"
           type="text"
           value={active.model}
           onChange={(e) => updateProvider(active.id, { model: e.target.value })}
