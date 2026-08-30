@@ -36,7 +36,8 @@ export function ChatPanel() {
     const text = input.trim()
     if (!text || running) return
     const cfg = getActiveProvider()
-    if (!cfg.apiKey.trim()) {
+    const preset = useAppStore.getState().presets.find((p) => p.id === cfg.id)
+    if (preset?.needsApiKey !== false && !cfg.apiKey.trim()) {
       setError('请先点击右上角「模型配置」填写 API Key')
       return
     }

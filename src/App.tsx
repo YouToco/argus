@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useAppStore } from './store'
-import { getPreset } from './lib/providers'
+import { useEffect, useState } from 'react'
+import { useAppStore, getPreset } from './store'
+import { fetchCatalogPresets } from './lib/catalog'
 import { ProviderPanel } from './components/ProviderPanel'
 import { VideoPanel } from './components/VideoPanel'
 import { FrameGrid } from './components/FrameGrid'
@@ -12,6 +12,19 @@ export default function App() {
   const running = useAppStore((s) => s.running)
   const providerName = getPreset(activeProviderId)?.name ?? ''
   const hasVideo = useAppStore((s) => !!s.session)
+
+  useEffect(() => {
+    // load the models.dev provider catalog (cached; best-effort)
+    setCatalogStatus('loading')
+    fetchCatalogPresets()
+      .then((list) => {
+        useAppStore.getState().appendPresets(list)
+        setCatalogStatus('ready')
+      })
+      .catch(() => setCatalogStatus('error'))
+  }, [])
+
+  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   return (
     <div className="flex h-full flex-col">
@@ -44,6 +57,7 @@ export default function App() {
           >
             <span className="text-sm leading-none">⚙️</span>
             <span className="font-medium">{providerName}</span>
+            {catalogStatus === 'loading' && <span className="text-zinc-600">· 载入目录…</span>}
             <span className="hidden text-zinc-500 sm:inline">
               {hasVideo ? '· 已加载视频' : '· 待加载视频'}
             </span>

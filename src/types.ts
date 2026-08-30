@@ -3,7 +3,6 @@ export type ProviderKind = 'openai' | 'anthropic' | 'google'
 export interface ProviderConfig {
   id: string
   kind: ProviderKind
-  label: string
   apiKey: string
   baseURL: string
   model: string

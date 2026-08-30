@@ -8,10 +8,15 @@ import type {
 } from './types'
 import { loadSettings, saveSettings } from './lib/settings'
 import { VideoSession } from './lib/video/session'
+import { BUILTIN_PRESETS, resolveProviderConfig, type ProviderPreset } from './lib/providers'
 
 interface AppState {
-  providers: ProviderConfig[]
+  /** available providers (curated built-ins + models.dev catalog), for the dropdown + metadata */
+  presets: ProviderPreset[]
+  /** per-provider config overrides (only what the user has touched) */
+  configs: Record<string, ProviderConfig>
   activeProviderId: string
+
   session: VideoSession | null
   videoInfo: VideoFileInfo | null
   frames: ExtractedFrame[]
@@ -20,7 +25,10 @@ interface AppState {
   running: boolean
 
   setActiveProvider: (id: string) => void
-  updateProvider: (id: string, patch: Partial<ProviderConfig>) => void
+  updateConfig: (id: string, patch: Partial<ProviderConfig>) => void
+  appendPresets: (list: ProviderPreset[]) => void
+  resetConfig: (id: string) => void
+
   setSession: (s: VideoSession | null) => void
   setVideoInfo: (i: VideoFileInfo | null) => void
   addFrames: (f: ExtractedFrame[]) => void
@@ -37,8 +45,10 @@ interface AppState {
 const initial = loadSettings()
 
 export const useAppStore = create<AppState>()((set, get) => ({
-  providers: initial.providers,
+  presets: BUILTIN_PRESETS,
+  configs: initial.configs,
   activeProviderId: initial.activeProviderId,
+
   session: null,
   videoInfo: null,
   frames: [],
@@ -48,13 +58,30 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id })
-    saveSettings({ providers: get().providers, activeProviderId: id })
+    saveSettings({ configs: get().configs, activeProviderId: id })
   },
 
-  updateProvider: (id, patch) => {
-    const providers = get().providers.map((p) => (p.id === id ? { ...p, ...patch } : p))
-    set({ providers })
-    saveSettings({ providers, activeProviderId: get().activeProviderId })
+  updateConfig: (id, patch) => {
+    const cfg = resolveProviderConfig(get().presets, get().configs, id)
+    const next: ProviderConfig = { ...cfg, ...patch, id }
+    const configs = { ...get().configs, [id]: next }
+    set({ configs })
+    saveSettings({ configs, activeProviderId: get().activeProviderId })
+  },
+
+  appendPresets: (list) => {
+    set((s) => {
+      const existing = new Set(s.presets.map((p) => p.id))
+      const fresh = list.filter((p) => !existing.has(p.id))
+      return { presets: [...s.presets, ...fresh] }
+    })
+  },
+
+  resetConfig: (id) => {
+    const configs = { ...get().configs }
+    delete configs[id]
+    set({ configs })
+    saveSettings({ configs, activeProviderId: get().activeProviderId })
   },
 
   setSession: (s) => {
@@ -62,12 +89,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
     if (old && old !== s) old.destroy()
     set({ session: s })
   },
-
   setVideoInfo: (i) => set({ videoInfo: i }),
-
   addFrames: (f) => set((st) => ({ frames: [...st.frames, ...f] })),
   clearFrames: () => set({ frames: [] }),
-
   addMessage: (m) => set((st) => ({ messages: [...st.messages, m] })),
   appendToMessage: (id, delta) =>
     set((st) => ({
@@ -75,12 +99,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
     })),
   updateMessage: (id, patch) =>
     set((st) => ({ messages: st.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
-
   addActivity: (a) => set((st) => ({ activities: [...st.activities, a] })),
   clearActivities: () => set({ activities: [] }),
-
   setRunning: (v) => set({ running: v }),
-
   reset: () => {
     get().session?.destroy()
     set({
@@ -94,7 +115,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 }))
 
+/** Resolve the active provider's effective config (saved override or preset default). */
 export function getActiveProvider(): ProviderConfig {
   const st = useAppStore.getState()
-  return st.providers.find((p) => p.id === st.activeProviderId) ?? st.providers[0]
+  return resolveProviderConfig(st.presets, st.configs, st.activeProviderId)
+}
+
+/** Resolve a provider preset from the store (built-in or catalog). */
+export function getPreset(id: string): ProviderPreset | undefined {
+  return useAppStore.getState().presets.find((p) => p.id === id)
 }
