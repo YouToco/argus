@@ -23,11 +23,14 @@ interface AppState {
   messages: ChatMessage[]
   activities: ToolActivity[]
   running: boolean
+  /** catalog loading status for offline-aware UI */
+  catalogStatus: 'loading' | 'ready' | 'error'
 
   setActiveProvider: (id: string) => void
   updateConfig: (id: string, patch: Partial<ProviderConfig>) => void
   appendPresets: (list: ProviderPreset[]) => void
   resetConfig: (id: string) => void
+  setCatalogStatus: (s: 'loading' | 'ready' | 'error') => void
 
   setSession: (s: VideoSession | null) => void
   setVideoInfo: (i: VideoFileInfo | null) => void
@@ -55,6 +58,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   messages: [],
   activities: [],
   running: false,
+  catalogStatus: 'loading',
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id })
@@ -83,6 +87,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ configs })
     saveSettings({ configs, activeProviderId: get().activeProviderId })
   },
+
+  setCatalogStatus: (s) => set({ catalogStatus: s }),
 
   setSession: (s) => {
     const old = get().session

@@ -12,6 +12,8 @@ export default function App() {
   const running = useAppStore((s) => s.running)
   const providerName = getPreset(activeProviderId)?.name ?? ''
   const hasVideo = useAppStore((s) => !!s.session)
+  const catalogStatus = useAppStore((s) => s.catalogStatus)
+  const setCatalogStatus = useAppStore((s) => s.setCatalogStatus)
 
   useEffect(() => {
     // load the models.dev provider catalog (cached; best-effort)
@@ -22,9 +24,7 @@ export default function App() {
         setCatalogStatus('ready')
       })
       .catch(() => setCatalogStatus('error'))
-  }, [])
-
-  const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  }, [setCatalogStatus])
 
   return (
     <div className="flex h-full flex-col">

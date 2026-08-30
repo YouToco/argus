@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from 'cmdk'
 import { testConnection } from '../lib/providers'
 import type { ProviderPreset } from '../lib/providers'
 import { useAppStore } from '../store'
@@ -17,34 +18,32 @@ const BADGE_LABEL: Record<ProviderPreset['badge'], string> = {
   catalog: 'models.dev',
 }
 
+/** Substring filter that matches provider id or name (works for Chinese too). */
+const providerFilter = (value: string, search: string, keywords?: string[]) => {
+  const s = search.trim().toLowerCase()
+  if (!s) return 1
+  if (value.toLowerCase().includes(s)) return 1
+  if (keywords?.some((k) => k.toLowerCase().includes(s))) return 1
+  return 0
+}
+
 export function ProviderPanel({ onClose }: { onClose: () => void }) {
   const presets = useAppStore((s) => s.presets)
   const activeProviderId = useAppStore((s) => s.activeProviderId)
   const setActiveProvider = useAppStore((s) => s.setActiveProvider)
   const updateConfig = useAppStore((s) => s.updateConfig)
+  const catalogStatus = useAppStore((s) => s.catalogStatus)
 
   const cfg = useAppStore((s) => s.configs[activeProviderId])
 
   const [showKey, setShowKey] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; latencyMs?: number; error?: string } | null>(null)
-  const [filter, setFilter] = useState('')
 
   const preset = presets.find((p) => p.id === activeProviderId)
-
   const builtin = useMemo(() => presets.filter((p) => p.source === 'builtin'), [presets])
-  const catalog = useMemo(
-    () => presets.filter((p) => p.source === 'catalog'),
-    [presets],
-  )
+  const catalog = useMemo(() => presets.filter((p) => p.source === 'catalog'), [presets])
 
-  const filteredCatalog = useMemo(() => {
-    const q = filter.trim().toLowerCase()
-    if (!q) return catalog
-    return catalog.filter((p) => p.name.toLowerCase().includes(q) || p.id.includes(q))
-  }, [catalog, filter])
-
-  // effective config (override or preset default)
   const active = cfg ?? {
     id: activeProviderId,
     kind: preset?.transport ?? 'openai',
@@ -68,13 +67,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const modelOptions = useMemo(() => {
-    if (!preset) return { all: [], vision: [] }
-    return {
-      all: preset.models,
-      vision: preset.visionModels ?? [],
-    }
-  }, [preset])
+  const visionCount = preset?.visionModels?.length ?? 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[6vh] overflow-y-auto" onClick={onClose}>
@@ -83,52 +76,62 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         onSubmit={(e) => e.preventDefault()}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-100">模型 / Provider</h2>
           <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
             ✕
           </button>
         </div>
 
-        {/* Provider selector */}
-        <label htmlFor="provider-select" className="mb-1 block text-xs text-zinc-400">Provider</label>
-        <select
-          id="provider-select"
-          name="provider-select"
-          value={activeProviderId}
-          onChange={(e) => onSelect(e.target.value)}
-          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-500"
-        >
-          <optgroup label="常用">
-            {builtin.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label={`更多 provider · models.dev (${catalog.length})`}>
-            {filteredCatalog.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        {/* Searchable combobox (search inside the dropdown) */}
+        <label className="mb-1 block text-xs text-zinc-400">Provider</label>
+        <Command shouldFilter filter={providerFilter} loop className="overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900">
+          <div className="flex items-center gap-2 border-b border-zinc-800 px-3">
+            <span className="text-zinc-500">🔍</span>
+            <CommandInput
+              id="provider-search"
+              name="provider-search"
+              placeholder={`搜索 provider…（当前：${preset?.name ?? ''}）`}
+              autoFocus
+              className="w-full bg-transparent py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+            />
+          </div>
+          <CommandList className="scroll-thin max-h-[300px] overflow-y-auto p-1">
+            <CommandEmpty className="px-3 py-6 text-center text-sm text-zinc-500">
+              没有匹配的 provider
+            </CommandEmpty>
 
-        <input
-          id="provider-filter"
-          name="provider-filter"
-          aria-label="搜索 provider"
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="搜索 models.dev 里的 provider…"
-          autoComplete="off"
-          className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-amber-500"
-        />
-        {filter && filteredCatalog.length === 0 && (
-          <p className="mt-1 text-xs text-zinc-500">没有匹配的 provider</p>
-        )}
+            <CommandGroup
+              heading="常用"
+              className="text-xs text-zinc-500 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-zinc-500"
+            >
+              {builtin.map((p) => (
+                <ProviderItem key={p.id} preset={p} active={p.id === activeProviderId} onSelect={onSelect} />
+              ))}
+            </CommandGroup>
+
+            {catalogStatus === 'loading' && (
+              <div className="px-3 py-3 text-xs text-zinc-500">正在载入 models.dev 目录…</div>
+            )}
+
+            {catalogStatus === 'error' && (
+              <div className="mx-1 my-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-300">
+                ⚠️ models.dev 目录不可用（离线 / 未加载）。仅显示内置 provider；本地 <b>Ollama</b> 仍可离线使用。
+              </div>
+            )}
+
+            {catalogStatus === 'ready' && catalog.length > 0 && (
+              <CommandGroup
+                heading={`更多 provider · models.dev (${catalog.length})`}
+                className="text-xs text-zinc-500 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-zinc-500"
+              >
+                {catalog.map((p) => (
+                  <ProviderItem key={p.id} preset={p} active={p.id === activeProviderId} onSelect={onSelect} />
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
 
         {preset && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -137,9 +140,8 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
             </span>
             <span className="text-zinc-500">默认端点：{preset.defaultBaseURL || '官方'}</span>
             {!preset.needsApiKey && <span className="text-zinc-500">· 无需 API Key</span>}
-            {preset.visionModels && preset.visionModels.length > 0 && (
-              <span className="text-zinc-500">· {preset.visionModels.length} 个视觉模型 👁️</span>
-            )}
+            {visionCount > 0 && <span className="text-zinc-500">· {visionCount} 个视觉模型 👁️</span>}
+            {preset.id === 'ollama' && <span className="text-violet-300">· 离线可用</span>}
           </div>
         )}
 
@@ -207,17 +209,17 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
           spellCheck={false}
           className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-500"
         />
-        {modelOptions.all.length > 0 && (
+        {preset && preset.models.length > 0 && (
           <datalist id="provider-model-options">
-            {modelOptions.all.map((m) => (
+            {preset.models.map((m) => (
               <option key={m} value={m} />
             ))}
           </datalist>
         )}
         <p className="mt-1 text-xs text-zinc-500">
           可从下拉建议中选择，或输入自定义模型名
-          {modelOptions.vision.length > 0 && (
-            <span className="text-zinc-400"> · 👁️ 视觉模型已优先：{modelOptions.vision.slice(0, 3).join(' / ')}{modelOptions.vision.length > 3 ? '…' : ''}</span>
+          {preset?.visionModels && preset.visionModels.length > 0 && (
+            <span className="text-zinc-400"> · 👁️ 视觉模型已优先：{preset.visionModels.slice(0, 3).join(' / ')}{preset.visionModels.length > 3 ? '…' : ''}</span>
           )}
         </p>
 
@@ -249,10 +251,36 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
         <p className="mt-3 text-xs leading-relaxed text-zinc-600">
           密钥与配置只保存在本机浏览器 localStorage，不会上传到任何服务器；请求由浏览器直发你填写的端点。
-          provider 列表来自 <span className="text-zinc-500">models.dev</span>（framework：@ai-sdk），
-          大部分走 OpenAI 兼容协议，Anthropic / Gemini 用各自官方 SDK。
+          provider 列表来自 <span className="text-zinc-500">models.dev</span>（@ai-sdk），大部分走 OpenAI 兼容协议，Anthropic / Gemini 用各自官方 SDK。
         </p>
       </form>
     </div>
+  )
+}
+
+function ProviderItem({
+  preset,
+  active,
+  onSelect,
+}: {
+  preset: ProviderPreset
+  active: boolean
+  onSelect: (id: string) => void
+}) {
+  return (
+    <CommandItem
+      value={preset.id}
+      keywords={[preset.name, preset.id]}
+      onSelect={() => onSelect(preset.id)}
+      className="mx-1 flex cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 outline-none transition aria-selected:bg-amber-500/15 aria-selected:text-amber-200 data-[selected]:bg-amber-500/15"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        {active && <span className="text-amber-400">●</span>}
+        <span className="truncate">{preset.name}</span>
+      </span>
+      <span className={`shrink-0 rounded-full border px-1.5 py-0 text-[10px] leading-4 ${BADGE_STYLE[preset.badge]}`}>
+        {BADGE_LABEL[preset.badge]}
+      </span>
+    </CommandItem>
   )
 }
