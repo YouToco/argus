@@ -1,0 +1,112 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Vite Site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Cache dist
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/
+          key: argus-dist-${{ github.sha }}
+
+  deploy-cloudflare:
+    name: Deploy to Cloudflare Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Restore dist
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/
+          key: argus-dist-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.118.0"
+          command: pages deploy dist/ --project-name=argus --commit-dirty=true
+
+  deploy-aliyun-oss:
+    name: Deploy to Alibaba Cloud OSS + CDN
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Restore dist
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/
+          key: argus-dist-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Install ossutil
+        run: |
+          curl -o ossutil.zip "https://gosspublic.alicdn.com/ossutil/v2/2.2.2/ossutil-2.2.2-linux-amd64.zip"
+          unzip -q ossutil.zip
+          chmod +x "ossutil-2.2.2-linux-amd64/ossutil"
+          mv "ossutil-2.2.2-linux-amd64/ossutil" /usr/local/bin/ossutil
+
+      - name: Sync to OSS
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: |
+          ossutil sync dist/ oss://zhuoqidev-argus/ \
+            --endpoint oss-cn-shenzhen.aliyuncs.com \
+            --region cn-shenzhen \
+            --delete \
+            --update
+
+      - name: Refresh CDN Cache
+        env:
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: |
+          pip install aliyun-python-sdk-cdn --quiet
+          python3 - <<'EOF'
+          import os
+          from aliyunsdkcore.client import AcsClient
+          from aliyunsdkcdn.request.v20180510.RefreshObjectCachesRequest import RefreshObjectCachesRequest
+
+          client = AcsClient(
+            os.environ["ALIYUN_ACCESS_KEY_ID"],
+            os.environ["ALIYUN_ACCESS_KEY_SECRET"],
+            "cn-hangzhou",
+          )
+          req = RefreshObjectCachesRequest()
+          req.set_ObjectPath("https://argus.zhuoqidev.com/")
+          req.set_ObjectType("Directory")
+          print(client.do_action_with_exception(req))
+          EOF
