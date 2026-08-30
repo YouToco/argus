@@ -11,8 +11,8 @@ import type { ProviderPreset } from './providers'
  */
 
 const FETCH_URL = 'https://models.dev/api.json'
-const CACHE_KEY = 'argus:modelsdev:v1'
-const CACHE_KEY_META = 'argus:modelsdev:meta:v1'
+const CACHE_KEY = 'argus:modelsdev:v2'
+const CACHE_KEY_META = 'argus:modelsdev:meta:v2'
 
 /**
  * models.dev doesn't carry an `api` base URL for SDK-native providers (those are
