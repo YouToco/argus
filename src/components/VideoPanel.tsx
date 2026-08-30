@@ -48,11 +48,13 @@ export function VideoPanel() {
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">视频</h2>
+        <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          视频
+        </h2>
         {session && (
           <button
             onClick={reset}
-            className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
           >
             重置
           </button>
@@ -68,19 +70,23 @@ export function VideoPanel() {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${
-            dragging ? 'border-amber-500 bg-amber-500/10' : 'border-zinc-700 hover:border-zinc-500'
+          className={`group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition ${
+            dragging
+              ? 'border-amber-500 bg-amber-500/10'
+              : 'border-zinc-700/80 hover:border-zinc-500 hover:bg-zinc-900/40'
           }`}
         >
-          <span className="text-2xl">🎞️</span>
-          <span className="text-sm text-zinc-300">{loading ? '加载中…' : '点击或拖入本地视频文件'}</span>
-          <span className="text-xs text-zinc-500">视频仅在本地浏览器处理，不上传</span>
+          <span className="text-3xl opacity-80 transition group-hover:scale-105">🎞️</span>
+          <span className="text-sm font-medium text-zinc-200">
+            {loading ? '加载中…' : '点击或拖入本地视频'}
+          </span>
+          <span className="text-xs leading-relaxed text-zinc-500">视频仅在本地浏览器处理，不会上传</span>
         </button>
       ) : (
         videoInfo && <InfoCard info={videoInfo} />
       )}
 
-      {error && <p className="rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="rounded-md bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-400">{error}</p>}
 
       <input
         ref={inputRef}
@@ -110,17 +116,20 @@ function InfoCard({ info }: { info: VideoFileInfo }) {
     ['音频', info.hasAudio ? '有' : '-'],
   ]
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
       <dl className="space-y-1.5">
         {rows.map(([k, v]) => (
           <div key={k} className="flex items-baseline justify-between gap-2">
             <dt className="shrink-0 text-xs text-zinc-500">{k}</dt>
-            <dd className="truncate text-right text-xs text-zinc-200" title={v}>
+            <dd className="truncate text-right text-xs font-mono text-zinc-200" title={v}>
               {v}
             </dd>
           </div>
         ))}
       </dl>
+      <p className="mt-2 border-t border-zinc-800 pt-2 text-[11px] text-zinc-600">
+        已本地载入 · agent 可读取详细信息
+      </p>
     </div>
   )
 }

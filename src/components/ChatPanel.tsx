@@ -145,9 +145,9 @@ export function ChatPanel() {
         ))}
       </div>
 
-      <div className="border-t border-zinc-800 pt-3">
+      <div className="border-t border-zinc-800/70 bg-zinc-950/50 p-3">
         {running && (
-          <div className="mb-2 flex items-center gap-2 text-xs text-zinc-400">
+          <div className="mb-2 flex items-center gap-2 rounded-lg bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400">
             <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
             {lastActivity ? (
               <span className="font-mono">
@@ -176,16 +176,16 @@ export function ChatPanel() {
               }
             }}
             rows={2}
-            placeholder="描述你要分析的需求，例如：数一下这段监控视频里一共有几个人 / 找出画面里的红色物品出现的时间点…"
-            className="scroll-thin flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-amber-500"
+            placeholder="描述你要分析的需求，例如：数一下这段监控视频里一共有几个人 / 找出画面里的红色物品…"
+            className="scroll-thin flex-1 resize-none rounded-xl border border-zinc-700/80 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-amber-500/70 focus:ring-2 focus:ring-amber-500/10"
           />
           <button
             onClick={running ? stop : send}
             disabled={!running && !input.trim()}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
               running
-                ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
-                : 'bg-amber-500 text-zinc-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40'
+                ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25'
+                : 'bg-gradient-to-b from-amber-400 to-amber-600 text-zinc-950 shadow-sm hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50'
             }`}
           >
             {running ? '停止' : '发送'}
@@ -198,11 +198,16 @@ export function ChatPanel() {
 
 function EmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
-      <span className="text-3xl">👁️</span>
-      <p className="text-sm text-zinc-400">Argus · 百眼守望</p>
+    <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/25 to-orange-600/10 text-3xl shadow-inner ring-1 ring-amber-500/20">
+        👁️
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-zinc-300">Argus · 百眼守望</p>
+        <p className="mt-0.5 text-xs text-zinc-500">长视频理解 Agent Harness</p>
+      </div>
       <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
-        加载视频后，用一句话描述需求。agent 会自动了解视频信息、按需抽帧观察、记录状态，必要时派子代理细看长片段。
+        加载视频后，用一句话描述需求。agent 会自动了解视频信息、按需抽帧观察、记录状态，必要时派子代理细看长片段、放大确认细节。
       </p>
     </div>
   )
