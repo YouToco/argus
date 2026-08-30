@@ -14,6 +14,26 @@ const FETCH_URL = 'https://models.dev/api.json'
 const CACHE_KEY = 'argus:modelsdev:v1'
 const CACHE_KEY_META = 'argus:modelsdev:meta:v1'
 
+/**
+ * models.dev doesn't carry an `api` base URL for SDK-native providers (those are
+ * meant to use their own @ai-sdk/* package). Since we drive them through
+ * @ai-sdk/openai, we need the OpenAI-compatible endpoint. This is a small, stable
+ * map for the common vendors; models/transport still come from models.dev.
+ */
+const KNOWN_BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  deepinfra: 'https://api.deepinfra.com/v1',
+  xai: 'https://api.x.ai/v1',
+  togetherai: 'https://api.together.xyz/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  cerebras: 'https://api.cerebras.ai/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  cohere: 'https://api.cohere.ai/compatibility/v1',
+  perplexity: 'https://api.perplexity.ai',
+  venice: 'https://api.venice.ai/api/v1',
+  aihubmix: 'https://aihubmix.com/v1',
+}
+
 interface ModelsDevEntry {
   name?: string
   npm?: string
@@ -69,7 +89,7 @@ export async function fetchCatalogPresets(force = false): Promise<ProviderPreset
       .sort((a, b) => Number(b.attachment) - Number(a.attachment) || a.id.localeCompare(b.id))
     if (models.length === 0) continue
 
-    const api = p.api ?? ''
+    const api = p.api ?? KNOWN_BASE_URLS[id] ?? ''
     const vision = models.filter((m) => m.attachment).map((m) => m.id)
     const defaultModel = vision[0] ?? models[0].id
     const local = isLocalhost(api)
