@@ -272,7 +272,7 @@ function ProviderItem({
       value={preset.id}
       keywords={[preset.name, preset.id]}
       onSelect={() => onSelect(preset.id)}
-      className="mx-1 flex cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 outline-none transition aria-selected:bg-amber-500/15 aria-selected:text-amber-200 data-[selected]:bg-amber-500/15"
+      className="mx-1 flex cursor-pointer items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 outline-none transition aria-[selected=true]:bg-amber-500/15 aria-[selected=true]:text-amber-200"
     >
       <span className="flex min-w-0 items-center gap-2">
         {active && <span className="text-amber-400">●</span>}
