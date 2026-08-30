@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAppStore } from './store'
-import { PROVIDER_PRESETS } from './lib/providers'
+import { getPreset } from './lib/providers'
 import { ProviderPanel } from './components/ProviderPanel'
 import { VideoPanel } from './components/VideoPanel'
 import { FrameGrid } from './components/FrameGrid'
@@ -10,7 +10,7 @@ export default function App() {
   const [showProvider, setShowProvider] = useState(false)
   const activeProviderId = useAppStore((s) => s.activeProviderId)
   const running = useAppStore((s) => s.running)
-  const providerName = PROVIDER_PRESETS[activeProviderId as keyof typeof PROVIDER_PRESETS]?.name ?? ''
+  const providerName = getPreset(activeProviderId)?.name ?? ''
 
   return (
     <div className="flex h-full flex-col bg-zinc-950 text-zinc-100">

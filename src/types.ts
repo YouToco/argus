@@ -1,4 +1,4 @@
-export type ProviderKind = 'openai-compatible' | 'anthropic' | 'google'
+export type ProviderKind = 'openai' | 'anthropic' | 'google'
 
 export interface ProviderConfig {
   id: string

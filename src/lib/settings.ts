@@ -1,5 +1,5 @@
-import type { ProviderConfig, ProviderKind } from '../types'
-import { PROVIDER_PRESETS } from './providers'
+import type { ProviderConfig } from '../types'
+import { PROVIDER_PRESETS, createDefaultConfig } from './providers'
 
 const KEY = 'argus:settings:v1'
 
@@ -9,14 +9,8 @@ export interface PersistedSettings {
 }
 
 function defaultProviders(): ProviderConfig[] {
-  return (Object.keys(PROVIDER_PRESETS) as ProviderKind[]).map((kind) => ({
-    id: kind,
-    kind,
-    label: PROVIDER_PRESETS[kind].name,
-    apiKey: '',
-    baseURL: PROVIDER_PRESETS[kind].defaultBaseURL,
-    model: PROVIDER_PRESETS[kind].defaultModel,
-  }))
+  // one config slot per known preset; only baseURL/model are prefilled, apiKey empty
+  return PROVIDER_PRESETS.map((preset) => createDefaultConfig(preset))
 }
 
 export function loadSettings(): PersistedSettings {
