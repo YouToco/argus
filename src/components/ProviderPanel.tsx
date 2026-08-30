@@ -78,19 +78,20 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[6vh] overflow-y-auto" onClick={onClose}>
-      <div
+      <form
         className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl"
+        onSubmit={(e) => e.preventDefault()}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-100">模型 / Provider</h2>
-          <button onClick={onClose} className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
+          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
             ✕
           </button>
         </div>
 
         {/* Provider selector */}
-        <label className="mb-1 block text-xs text-zinc-400">Provider</label>
+        <label htmlFor="provider-select" className="mb-1 block text-xs text-zinc-400">Provider</label>
         <select
           id="provider-select"
           name="provider-select"
@@ -117,6 +118,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         <input
           id="provider-filter"
           name="provider-filter"
+          aria-label="搜索 provider"
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -144,7 +146,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         {/* API Key */}
         {preset?.needsApiKey !== false && (
           <>
-            <label className="mb-1 mt-4 block text-xs text-zinc-400">API Key</label>
+            <label htmlFor="provider-api-key" className="mb-1 mt-4 block text-xs text-zinc-400">API Key</label>
             <div className="flex gap-2">
               <input
                 id="provider-api-key"
@@ -161,6 +163,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
                 className="flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-500"
               />
               <button
+                type="button"
                 onClick={() => setShowKey((v) => !v)}
                 className="rounded-md border border-zinc-700 px-3 text-xs text-zinc-400 hover:bg-zinc-800"
               >
@@ -171,7 +174,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         )}
 
         {/* Base URL */}
-        <label className="mb-1 mt-4 block text-xs text-zinc-400">Base URL</label>
+        <label htmlFor="provider-base-url" className="mb-1 mt-4 block text-xs text-zinc-400">Base URL</label>
         <input
           id="provider-base-url"
           name="provider-base-url"
@@ -188,7 +191,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
         />
 
         {/* Model */}
-        <label className="mb-1 mt-4 block text-xs text-zinc-400">模型</label>
+        <label htmlFor="provider-model" className="mb-1 mt-4 block text-xs text-zinc-400">模型</label>
         <input
           id="provider-model"
           name="provider-model"
@@ -227,6 +230,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
         {/* Test connection */}
         <button
+          type="button"
           onClick={onTest}
           disabled={testing || !active.model.trim() || (preset?.needsApiKey !== false && !active.apiKey.trim())}
           className="mt-3 w-full rounded-lg bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
@@ -248,7 +252,7 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
           provider 列表来自 <span className="text-zinc-500">models.dev</span>（framework：@ai-sdk），
           大部分走 OpenAI 兼容协议，Anthropic / Gemini 用各自官方 SDK。
         </p>
-      </div>
+      </form>
     </div>
   )
 }
