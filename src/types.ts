@@ -48,7 +48,8 @@ export interface ChatMessage {
   content: string
   /** frames to render as thumbnails under this message */
   frameIds?: string[]
-  toolCalls?: { toolName: string; input: unknown; summary?: string; error?: boolean }[]
+  /** full tool activity trace (incl. sub-agent depth>0) for the collapsible process view */
+  activities?: ToolActivity[]
   error?: boolean
   pending?: boolean
 }

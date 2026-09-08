@@ -65,6 +65,12 @@ export class MemoryStore {
   clear(): void {
     this.entries = []
   }
+
+  /** restore persisted entries (session hydration). */
+  restore(entries: MemoryEntry[]): void {
+    this.entries = [...entries]
+    this.seq = entries.length
+  }
 }
 
 export const memory = new MemoryStore()

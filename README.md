@@ -1,78 +1,91 @@
-# Argus 👁️
+<div align="center">
 
-前端本地「长视频理解」agent harness。视频完全在浏览器本地处理，**无后端**；用户自己填写任意 LLM provider 的 API Key / Base URL / 模型，agent 通过一组工具完成抽帧观察、状态记忆与子代理分工，最终给出带证据的结论。
+# Argus
 
-名字取自希腊神话百眼巨人 **Argus Panoptes**（全视守望者）——正好对应「盯着监控画面数人、找物」的场景。
+**前端本地的长视频理解 Agent Harness —— 视频不出浏览器，结论必带证据**
+
+Frontend-local long-video understanding agent harness. No backend, no uploads — your video never leaves the browser.
+
+[![Deploy](https://github.com/YouToco/argus/actions/workflows/deploy.yml/badge.svg)](https://github.com/YouToco/argus/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5-black.svg)](https://ai-sdk.dev)
+
+[在线体验](https://argus.zhuoqidev.com) · [快速开始](#快速开始) · [工作原理](#工作原理) · [测试](#测试)
+
+</div>
+
+---
+
+名字取自希腊神话百眼巨人 **Argus Panoptes**（全视守望者）。你给 Argus 一段本地视频和一句话需求——"数一下这段监控里有几个人""找出红色物品出现的时间"——它会自己规划抽帧策略、逐段观察、记录状态、必要时派子代理细看，最后给出**带关键帧时间戳证据**的结论。
+
+![主页](docs/screenshots/home-empty.jpg)
 
 ## 特性
 
-- **纯前端、零后端**：视频通过本地 Object URL 加载，不出浏览器；帧提取走原生 `<video>` + `<canvas>` 硬件解码，不依赖 FFmpeg/WASM 重编码。
-- **多 provider 一个 SDK**：基于 [Vercel AI SDK](https://ai-sdk.dev)，同一套代码支持：
-  - **OpenAI 兼容端点**（可自定义 baseURL → OpenAI / OpenRouter / DeepSeek / Kimi / 智谱 / Ollama …）
-  - **Anthropic**（自动附加 `direct-browser-access` 头，支持浏览器直连）
-  - **Google Gemini**（浏览器直连）
-- **专业 agent loop + 工具集**：
-  - `get_video_info` — 容器/编码/大小/时长/分辨率/帧率/码率（mediainfo.js，懒加载）
-  - `extract_frames` — 按【时间范围 + 间隔】抽帧，支持精度控制（`max_width`/`quality`/`max_frames`）
-  - `extract_frame_at` — 抽指定时刻单帧
-  - `list_frames` — 列出已抽帧及 id
-  - `inspect_region` — 放大某帧局部区域（找远处物体/人物）
-  - `remember` / `recall` — 状态记忆，避免长上下文遗忘
-  - `spawn_subagent` — 把长片段细看交给子代理，避免主上下文被帧图撑爆
-- **必要时重新抽帧**：agent 发现某段时间凭状态信息无法定论时，会用更小间隔 / 更高精度重新抽帧细看。
-- **凭证只存本机**：API Key 与配置只存浏览器 `localStorage`，请求由浏览器直发你填写的端点，不经任何中间服务器。
+- **纯前端、零后端**：视频经本地 Object URL 加载，帧提取走原生 `<video>` + `<canvas>` 硬件解码，不依赖 FFmpeg/WASM 重编码，文件从不上传。
+- **BYOK 多 provider**：基于 [Vercel AI SDK](https://ai-sdk.dev)，一套代码支持 OpenAI 兼容端点（OpenRouter / DeepSeek / Kimi / 智谱 / Ollama …）、Anthropic、Gemini；填完 API Key **自动拉取端点模型列表**，下拉即选。
+- **专业 Agent 工作流**：粗扫 → 锁定区间 → 加密细看 → 放大确认的分层策略；`remember/recall` 状态记忆防长上下文遗忘；`spawn_subagent` 把长片段派给子代理并行细看。
+- **过程可视化**：回答上方是可折叠的工作过程区——每个工具调用的参数摘要、结果、状态一目了然，子代理步骤嵌套展示；回答用 Markdown 渲染。
+- **本地持久化**：分析会话（对话 / 帧 / 记忆）自动存入 IndexedDB，刷新不丢；历史记录支持单条恢复、单条删除、一键清空。
+- **长视频内存治理**：内存只保留最近 200 帧（旧帧从 IndexedDB 懒加载）；发给模型的上下文只保留最近 3 批帧图，更早的替换为可回查的文字指针——小时级视频不会撑爆标签页内存或上下文窗口。
+- **凭证不出本机**：API Key 只存浏览器 localStorage，请求由浏览器直发你填写的端点。
 
-## 本地开发
+## 使用过程
+
+| 分析回答（Markdown + 证据帧条） | 工作过程区（90 步工具调用可审计） |
+| --- | --- |
+| ![分析回答](docs/screenshots/analysis-answer.jpg) | ![过程区](docs/screenshots/process-expanded.jpg) |
+
+| 子代理并行细看（28 个子步骤嵌套） | 模型配置（自动拉取模型列表） |
+| --- | --- |
+| ![子代理](docs/screenshots/subagent-trace.jpg) | ![配置弹窗](docs/screenshots/config-dialog.jpg) |
+
+| 历史记录（恢复 / 单删 / 清空） |
+| --- |
+| ![历史记录](docs/screenshots/history-panel.jpg) |
+
+## 快速开始
+
+**在线版**：打开 [argus.zhuoqidev.com](https://argus.zhuoqidev.com)，右上角填入任意 provider 的 API Key，左侧拖入本地视频即可。
+
+**本地开发**：
 
 ```bash
 npm install
-npm run dev        # 启动 Vite 开发服务器
+npm run dev        # Vite 开发服务器
+npm test           # vitest 单元测试
+npm run typecheck  # tsc --noEmit
 npm run build      # 类型检查 + 生产构建（产物在 dist/）
-npm run preview    # 预览生产构建
 ```
 
-打开页面 → 右上角「模型配置」填 API Key / Base URL / 模型 → 左侧加载本地视频 → 输入需求开始分析。
+推荐使用带视觉能力的模型（如 `deepseek-v4-flash-vision-exp`、`gpt-4o`、`gemini-2.5-flash`、`qwen-vl-max`）——纯文本模型看不到帧图，无法完成分析。
 
-## 多 provider 说明（CORS）
-
-浏览器直连 LLM API 受各家 CORS 策略约束：
-
-| Provider | 浏览器直连 | 说明 |
-|---|---|---|
-| OpenAI 官方 | ❌ | 官方 API 拦截浏览器跨域，请改用兼容端点 |
-| OpenRouter / DeepSeek / Kimi / 智谱 / Groq 等 | ✅ | 走「OpenAI 兼容」类型，填对应 baseURL |
-| Anthropic | ✅ | 已自动附加 direct-browser-access 头 |
-| Google Gemini | ✅ | 原生支持 |
-
-> 视觉分析需要**多模态模型**（如 `gpt-4o`、`qwen-vl-max`、`claude-sonnet-4`、`gemini-2.5-flash`）。
-
-## 部署架构（双线）
-
-与 [zhuoqidev.com](https://github.com/YouToco/zhuoqidev.com) 相同：
-
-- **国内流量** → 阿里云 CDN → OSS（`oss-cn-shenzhen`）
-- **海外流量** → Cloudflare Pages
-- DNS 分线路由：`default`（国内）→ 阿里 CDN，`oversea`（海外）→ Cloudflare Pages
-- 自动化：GitHub Actions，push 到 `main` 即构建 `dist/` 并双线发布
-
-详见 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)。
-
-## 项目结构
+## 工作原理
 
 ```
-src/
-├── lib/
-│   ├── providers.ts        # 多 provider 模型工厂（Vercel AI SDK）
-│   ├── settings.ts         # localStorage 配置持久化
-│   ├── format.ts           # 时长/字节/码率格式化
-│   ├── video/
-│   │   ├── session.ts      # VideoSession：视频加载 + 抽帧（video+canvas）
-│   │   └── inspect.ts      # 局部区域放大
-│   └── agent/
-│       ├── harness.ts      # agent loop（手动工具循环 + 子代理）
-│       ├── tools.ts        # 工具注册表
-│       └── memory.ts       # 状态记忆
-├── components/             # React UI
-├── store.ts                # zustand 状态
-└── App.tsx
+用户需求 → 主 Agent（系统提示 + 工具集）
+  ├─ get_video_info    容器/编码/时长/分辨率/帧率（mediainfo.js 懒加载）
+  ├─ extract_frames    按【时间范围 + 间隔】批量抽帧（精度/数量可控）
+  ├─ extract_frame_at  抽指定瞬间单帧
+  ├─ list_frames       列出已抽帧及 id
+  ├─ inspect_region    放大某帧局部区域（确认远处物体细节）
+  ├─ remember / recall 时间段观察结论的写入与回读（状态工具）
+  └─ spawn_subagent    把某时间段的细看派给子代理 → 返回精简结论
+         └─ 子代理继承除 spawn 外的全部工具，独立抽帧观察
 ```
+
+每轮工具产出的帧图注入对话供模型直接观察；旧帧图在上下文中按批裁剪（保留最近 3 批），模型随时可通过 `list_frames` / `extract_frame_at` 回查任意帧。
+
+## 测试
+
+- **单元测试**：`npm test`（vitest）—— 记忆存储、上下文帧图裁剪等核心逻辑。
+- **真值视频集**：`public/gen-test-video.html` 可在浏览器里一键生成 5 段带精确真值的合成视频（物体运动 / 计数变化 / OCR / 1 秒瞬态事件 / 3 分钟稀疏事件），用于端到端验证 agent 的真实理解力——本项目所有结论都对真值验证过（计数变化边界 0.1s 级、180s 稀疏事件全召回零幻觉、4 子代理并行编排）。
+
+## 隐私
+
+视频文件、API Key、分析记录全部留在本机（localStorage + IndexedDB）；唯一的网络请求是从浏览器直发你配置的 LLM 端点。清空历史记录即彻底删除本地数据。
+
+## License
+
+[MIT](LICENSE)

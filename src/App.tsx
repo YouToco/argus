@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useAppStore, getPreset } from './store'
 import { fetchCatalogPresets } from './lib/catalog'
+import { bootstrapPersistence, startAutosave } from './lib/persistence'
 import { ProviderPanel } from './components/ProviderPanel'
+import { HistoryPanel } from './components/HistoryPanel'
 import { VideoPanel } from './components/VideoPanel'
 import { FrameGrid } from './components/FrameGrid'
 import { ChatPanel } from './components/ChatPanel'
+import { EyeIcon, GearIcon, HistoryIcon } from './components/icons'
 
 export default function App() {
   const [showProvider, setShowProvider] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const activeProviderId = useAppStore((s) => s.activeProviderId)
   const running = useAppStore((s) => s.running)
   const providerName = getPreset(activeProviderId)?.name ?? ''
@@ -16,7 +20,6 @@ export default function App() {
   const setCatalogStatus = useAppStore((s) => s.setCatalogStatus)
 
   useEffect(() => {
-    // load the models.dev provider catalog (cached; best-effort)
     setCatalogStatus('loading')
     fetchCatalogPresets()
       .then((list) => {
@@ -26,58 +29,74 @@ export default function App() {
       .catch(() => setCatalogStatus('error'))
   }, [setCatalogStatus])
 
+  // IndexedDB persistence: restore last session, then autosave on changes
+  useEffect(() => {
+    void bootstrapPersistence().catch(() => {})
+    return startAutosave()
+  }, [])
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-zinc-800/70 bg-zinc-950/60 px-4 py-2.5 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/25 to-orange-600/10 text-lg shadow-inner ring-1 ring-amber-500/20">
-            👁️
+    <div className="relative flex h-full flex-col">
+      <div className="bg-glow" aria-hidden="true" />
+      <div className="bg-grid" aria-hidden="true" />
+
+      <header className="relative z-10 flex items-center gap-4 border-b border-white/[0.08] bg-black/70 px-5 py-3 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#3d7fff] text-black">
+            <EyeIcon size={20} />
           </span>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold leading-tight tracking-tight text-zinc-100">Argus</h1>
-              <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-extrabold tracking-tighter text-white">Argus</h1>
+              <span className="mono-label rounded-sm border border-white/15 px-2 py-0.5 text-zinc-400">
                 长视频理解
               </span>
             </div>
-            <p className="text-[11px] leading-tight text-zinc-500">前端本地 · 多 provider Agent Harness</p>
+            <p className="mono-label mt-0.5 text-zinc-600">frontend-local · multi-provider agent harness</p>
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-3">
           {running && (
-            <span className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-              分析中
+            <span className="mono-label flex items-center gap-2 text-[#5c93ff]">
+              <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
+              analyzing
             </span>
           )}
           <button
-            onClick={() => setShowProvider(true)}
-            className="group flex items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-amber-500/60 hover:text-amber-300"
+            onClick={() => setShowHistory(true)}
+            className="btn-ghost flex items-center gap-2 rounded-md px-3 py-2 text-xs"
+            title="历史记录（本地持久化）"
           >
-            <span className="text-sm leading-none">⚙️</span>
-            <span className="font-medium">{providerName}</span>
-            {catalogStatus === 'loading' && <span className="text-zinc-600">· 载入目录…</span>}
-            <span className="hidden text-zinc-500 sm:inline">
-              {hasVideo ? '· 已加载视频' : '· 待加载视频'}
-            </span>
+            <HistoryIcon size={14} />
+            <span className="mono-label hidden sm:inline">history</span>
+          </button>
+          <button
+            onClick={() => setShowProvider(true)}
+            className="btn-primary flex items-center gap-2 rounded-md px-4 py-2 text-xs font-bold"
+          >
+            <GearIcon size={14} />
+            <span>{providerName}</span>
+            {catalogStatus === 'loading' && <span className="opacity-60">· …</span>}
+            <span className="hidden opacity-60 sm:inline">{hasVideo ? '· video loaded' : '· no video'}</span>
           </button>
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1">
-        <aside className="flex w-[300px] shrink-0 flex-col gap-3 border-r border-zinc-800/70 bg-zinc-950/40 p-3">
+      <main className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
+        <aside className="card flex w-[320px] shrink-0 flex-col gap-4 overflow-hidden p-4">
           <VideoPanel />
-          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto border-t border-white/[0.06] pt-3">
             <FrameGrid />
           </div>
         </aside>
-        <section className="min-w-0 flex-1">
+        <section className="card min-w-0 flex-1 overflow-hidden">
           <ChatPanel />
         </section>
       </main>
 
       {showProvider && <ProviderPanel onClose={() => setShowProvider(false)} />}
+      {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
     </div>
   )
 }

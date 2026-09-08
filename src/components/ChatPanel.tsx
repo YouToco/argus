@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useAppStore, getActiveProvider } from '../store'
 import { buildModel } from '../lib/providers'
 import { SYSTEM_PROMPT, runAgent } from '../lib/agent/harness'
 import { memory } from '../lib/agent/memory'
 import type { AgentContext } from '../lib/agent/tools'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, ExtractedFrame, ToolActivity } from '../types'
 import { formatTime } from '../lib/format'
+import { loadFrameById } from '../lib/db'
+import { CheckIcon, ChevronDownIcon, EyeIcon, StopIcon, XIcon } from './icons'
+import { Markdown } from './Markdown'
 
 let msgSeq = 0
 function nextId(): string {
@@ -19,6 +23,7 @@ export function ChatPanel() {
   const activities = useAppStore((s) => s.activities)
   const running = useAppStore((s) => s.running)
   const session = useAppStore((s) => s.session)
+  const videoInfo = useAppStore((s) => s.videoInfo)
   const setRunning = useAppStore((s) => s.setRunning)
 
   const [input, setInput] = useState('')
@@ -113,14 +118,7 @@ export function ChatPanel() {
       useAppStore.getState().updateMessage(asstMsg.id, {
         pending: false,
         frameIds: newFrames.map((f) => f.id),
-        toolCalls: newActs
-          .filter((a) => a.depth === 0)
-          .map((a) => ({
-            toolName: a.toolName,
-            input: a.input,
-            summary: a.summary,
-            error: a.status === 'error',
-          })),
+        activities: newActs,
       })
       setRunning(false)
       abortRef.current = null
@@ -133,38 +131,49 @@ export function ChatPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto px-1 py-2">
+      <div ref={scrollRef} className="scroll-thin flex-1 space-y-5 overflow-y-auto px-5 py-5">
         {messages.length === 0 && <EmptyState />}
         {messages.map((m) => (
           <Message
             key={m.id}
             message={m}
             frames={frames}
-            onAbort={stop}
+            liveActivities={m.pending ? activities : undefined}
             running={running}
           />
         ))}
       </div>
 
-      <div className="border-t border-zinc-800/70 bg-zinc-950/50 p-3">
+      {videoInfo && !session && (
+        <div className="border-t border-white/[0.08] bg-[#3d7fff]/5 px-4 py-2">
+          <p className="mono-label text-zinc-500">
+            restored from local history · reload <span className="text-[#5c93ff]">{videoInfo.name}</span> to continue
+          </p>
+        </div>
+      )}
+
+      <div className="border-t border-white/[0.08] bg-black/40 p-4">
         {running && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+          <div className="fade-in mb-3 flex items-center gap-2.5 rounded-md border border-white/[0.08] bg-white/[0.02] px-3 py-2">
+            <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
             {lastActivity ? (
-              <span className="font-mono">
-                正在调用 {lastActivity.toolName}
-                {lastActivity.depth > 0 ? `（子代理）` : ''}
+              <span className="font-mono text-[11px] text-zinc-400">
+                calling <span className="text-[#5c93ff]">{lastActivity.toolName}</span>
+                {lastActivity.depth > 0 ? ' · subagent' : ''}
               </span>
             ) : (
-              <span>思考中…</span>
+              <span className="mono-label text-zinc-500">thinking…</span>
             )}
-            <button onClick={stop} className="ml-auto rounded-md bg-zinc-800 px-2 py-0.5 text-xs hover:bg-zinc-700">
-              停止
+            <button onClick={stop} className="btn-ghost mono-label ml-auto flex items-center gap-1.5 rounded-sm px-2.5 py-1">
+              <StopIcon size={10} />
+              stop
             </button>
           </div>
         )}
-        {error && <p className="mb-2 rounded-md bg-red-500/10 px-3 py-1.5 text-xs text-red-400">{error}</p>}
-        <div className="flex items-end gap-2">
+        {error && (
+          <p className="fade-in mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
+        )}
+        <div className="flex items-end gap-2.5">
           <textarea
             id="chat-input"
             name="chat-input"
@@ -178,18 +187,25 @@ export function ChatPanel() {
             }}
             rows={2}
             placeholder="描述你要分析的需求，例如：数一下这段监控视频里一共有几个人 / 找出画面里的红色物品…"
-            className="scroll-thin flex-1 resize-none rounded-xl border border-zinc-700/80 bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-amber-500/70 focus:ring-2 focus:ring-amber-500/10"
+            className="input-line scroll-thin flex-1 resize-none rounded-md border border-white/10 bg-black/60 px-3.5 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           <button
             onClick={running ? stop : send}
             disabled={!running && !input.trim()}
-            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            className={`flex items-center gap-1.5 rounded-md px-5 py-2.5 text-xs font-bold tracking-wide ${
               running
-                ? 'bg-red-500/15 text-red-300 hover:bg-red-500/25'
-                : 'bg-gradient-to-b from-amber-400 to-amber-600 text-zinc-950 shadow-sm hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50'
+                ? 'btn-ghost border-red-500/40 text-red-400 hover:border-red-400 hover:bg-red-500/10 hover:text-red-300'
+                : 'btn-primary'
             }`}
           >
-            {running ? '停止' : '发送'}
+            {running ? (
+              <>
+                <StopIcon size={10} />
+                停止
+              </>
+            ) : (
+              '发送'
+            )}
           </button>
         </div>
       </div>
@@ -199,81 +215,247 @@ export function ChatPanel() {
 
 function EmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/25 to-orange-600/10 text-3xl shadow-inner ring-1 ring-amber-500/20">
-        👁️
-      </span>
-      <div>
-        <p className="text-sm font-semibold text-zinc-300">Argus · 百眼守望</p>
-        <p className="mt-0.5 text-xs text-zinc-500">长视频理解 Agent Harness</p>
+    <div className="fade-in flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
+      <p className="mono-label text-[#5c93ff]">long-video understanding · agent harness</p>
+      <div className="flex items-center gap-3">
+        <EyeIcon size={56} className="text-[#3d7fff]" />
+        <h2 className="text-6xl font-extrabold tracking-tighter text-white">
+          Argus<span className="caret ml-1.5" />
+        </h2>
       </div>
-      <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
+      <p className="max-w-md text-sm leading-relaxed text-zinc-500">
         加载视频后，用一句话描述需求。agent 会自动了解视频信息、按需抽帧观察、记录状态，必要时派子代理细看长片段、放大确认细节。
       </p>
+      <p className="mono-label text-zinc-700">drop a video on the left to begin</p>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Process view — collapsible tool-call / subagent trace (mainstream agent UI)
+// ---------------------------------------------------------------------------
+
+/** status updates arrive as appended records with the same id — keep the latest. */
+function dedupeActivities(list: ToolActivity[]): ToolActivity[] {
+  const map = new Map<string, ToolActivity>()
+  for (const a of list) map.set(a.id, a)
+  return [...map.values()]
+}
+
+function brief(input: unknown): string {
+  if (!input || typeof input !== 'object') return ''
+  const p = input as Record<string, unknown>
+  const n = (k: string) => (typeof p[k] === 'number' ? (p[k] as number) : undefined)
+  const s = (k: string) => (typeof p[k] === 'string' ? (p[k] as string) : undefined)
+  if (n('start_seconds') !== undefined && n('end_seconds') !== undefined) {
+    const range = `${n('start_seconds')}-${n('end_seconds')}s`
+    const iv = n('interval_seconds')
+    const topic = s('topic')
+    return iv !== undefined ? `${range} @${iv}s` : topic ? `[${range}] ${topic}` : range
+  }
+  if (n('time_seconds') !== undefined) return `@${n('time_seconds')}s`
+  if (Array.isArray(p.time_range)) {
+    const tr = p.time_range as number[]
+    const goal = s('goal')
+    return `[${tr[0]}-${tr[1]}s]${goal ? ' ' + (goal.length > 40 ? goal.slice(0, 40) + '…' : goal) : ''}`
+  }
+  const q = s('query') ?? s('topic')
+  if (q) return q.length > 40 ? q.slice(0, 40) + '…' : q
+  if (s('frame_id')) return `frame ${s('frame_id')}`
+  return ''
+}
+
+function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: boolean }) {
+  const [open, setOpen] = useState(live)
+  const items = useMemo(() => dedupeActivities(activities), [activities])
+  const mainCount = items.filter((a) => a.depth === 0).length
+  const subCount = items.length - mainCount
+  const runningCount = items.filter((a) => a.status === 'running').length
+
+  useEffect(() => {
+    if (live) setOpen(true)
+  }, [live])
+
+  return (
+    <div className="rounded-md border border-white/[0.08] bg-black/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        {live ? (
+          <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
+        ) : (
+          <CheckIcon size={11} className="shrink-0 text-emerald-400" />
+        )}
+        <span className="mono-label text-zinc-400">
+          {live ? `working · ${mainCount} steps` : `process · ${mainCount} steps`}
+          {subCount > 0 ? ` · ${subCount} subagent` : ''}
+          {live && runningCount > 0 ? ` · ${runningCount} running` : ''}
+        </span>
+        <ChevronDownIcon
+          size={12}
+          className={`ml-auto shrink-0 text-zinc-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <ul className="scroll-thin max-h-72 space-y-px overflow-y-auto border-t border-white/[0.06] p-1.5">
+              {items.map((a) => (
+                <ProcessItem key={a.id} activity={a} />
+              ))}
+              {items.length === 0 && <li className="mono-label px-3 py-2 text-zinc-600">waiting…</li>}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function ProcessItem({ activity: a }: { activity: ToolActivity }) {
+  const [detail, setDetail] = useState(false)
+  const isSub = a.depth > 0
+  const b = brief(a.input)
+  return (
+    <li className={isSub ? 'ml-4 border-l border-[#3d7fff]/25 pl-2' : ''}>
+      <button
+        type="button"
+        onClick={() => setDetail((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        {a.status === 'running' ? (
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#3d7fff]" />
+        ) : a.status === 'error' ? (
+          <XIcon size={10} className="shrink-0 text-red-400" />
+        ) : (
+          <CheckIcon size={10} className="shrink-0 text-emerald-500/80" />
+        )}
+        <span className={`shrink-0 font-mono text-[11px] ${isSub ? 'text-[#5c93ff]/80' : 'text-zinc-300'}`}>
+          {a.toolName}
+        </span>
+        {isSub && <span className="mono-label shrink-0 rounded-sm border border-[#3d7fff]/40 px-1 py-px text-[8px] text-[#5c93ff]">sub</span>}
+        {b && <span className="min-w-0 truncate font-mono text-[10px] text-zinc-600">{b}</span>}
+        {a.summary && (
+          <span className="ml-auto min-w-0 max-w-[45%] truncate text-right text-[10px] text-zinc-600" title={a.summary}>
+            {a.summary}
+          </span>
+        )}
+      </button>
+      {detail && (
+        <div className="mx-2 mb-1.5 space-y-1.5 rounded-sm border border-white/[0.06] bg-black/50 p-2.5">
+          <div>
+            <p className="mono-label mb-1 text-zinc-600">input</p>
+            <pre className="scroll-thin max-h-32 overflow-auto font-mono text-[10px] leading-relaxed text-zinc-400">
+              {JSON.stringify(a.input, null, 2)}
+            </pre>
+          </div>
+          {a.summary && (
+            <div>
+              <p className="mono-label mb-1 text-zinc-600">result</p>
+              <p className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">{a.summary}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+/** ids already probed in IndexedDB — avoids re-fetch loops for frames that no longer exist. */
+const attemptedFrames = new Set<string>()
+
+/**
+ * Frames evicted from the in-memory window (MAX_FRAMES_IN_MEMORY) are still in
+ * IndexedDB — reload them on demand when an old message's thumbnails render.
+ */
+function useLazyFrames(frameIds: string[] | undefined, skip: boolean) {
+  const activeSessionId = useAppStore((s) => s.activeSessionId)
+  useEffect(() => {
+    if (skip || !frameIds?.length || !activeSessionId) return
+    const st = useAppStore.getState()
+    const missing = frameIds.filter((id) => !st.frames.some((f) => f.id === id) && !attemptedFrames.has(id))
+    if (missing.length === 0) return
+    missing.forEach((id) => attemptedFrames.add(id))
+    void (async () => {
+      const loaded: ExtractedFrame[] = []
+      for (const fid of missing.slice(0, 24)) {
+        const f = await loadFrameById<ExtractedFrame>(activeSessionId, fid).catch(() => undefined)
+        if (f) loaded.push(f)
+      }
+      if (loaded.length > 0) useAppStore.getState().addFrames(loaded)
+    })()
+  }, [frameIds, activeSessionId, skip])
 }
 
 function Message({
   message,
   frames,
-  onAbort,
+  liveActivities,
   running,
 }: {
   message: ChatMessage
   frames: { id: string; dataUrl: string; timeSec: number; width: number; height: number }[]
-  onAbort: () => void
+  liveActivities?: ToolActivity[]
   running: boolean
 }) {
   const isUser = message.role === 'user'
+  useLazyFrames(message.frameIds, isUser)
   const frameObjs = (message.frameIds ?? [])
     .map((id) => frames.find((f) => f.id === id))
     .filter(Boolean) as { id: string; dataUrl: string; timeSec: number; width: number; height: number }[]
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-amber-500/15 px-4 py-2 text-sm text-amber-50">
+      <div className="fade-in flex justify-end">
+        <div className="max-w-[85%] rounded-md rounded-br-none bg-[#3d7fff] px-4 py-2.5 text-sm font-medium text-black">
           <span className="whitespace-pre-wrap">{message.content}</span>
         </div>
       </div>
     )
   }
 
+  const trace = liveActivities ?? message.activities ?? []
+
   return (
-    <div className="flex flex-col gap-2">
-      <div className="max-w-full rounded-2xl rounded-bl-sm border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-200">
+    <div className="fade-in flex flex-col gap-2.5">
+      {trace.length > 0 && <ProcessBlock activities={trace} live={Boolean(liveActivities) && running} />}
+
+      <div className="max-w-full rounded-md rounded-bl-none border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-zinc-200">
         {message.content ? (
-          <span className="whitespace-pre-wrap">{message.content}</span>
+          <>
+            <Markdown content={message.content} />
+            {message.pending && running && <span className="caret ml-1" />}
+          </>
         ) : (
-          message.pending && <span className="text-zinc-500">思考中…</span>
+          message.pending && (
+            <span className="mono-label flex items-center gap-2 text-zinc-600">
+              thinking
+              <span className="caret" />
+            </span>
+          )
         )}
-        {message.pending && running && <span className="ml-1 inline-block h-3 w-1 animate-pulse bg-amber-400" />}
         {message.error && <span className="ml-2 text-xs text-red-400">（出错）</span>}
       </div>
 
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {message.toolCalls.map((tc, i) => (
-            <button
-              key={i}
-              title={JSON.stringify(tc.input)}
-              className={`max-w-[220px] truncate rounded-md px-2 py-1 text-left font-mono text-[11px] ${
-                tc.error ? 'bg-red-500/10 text-red-400' : 'bg-zinc-800 text-zinc-400'
-              }`}
-            >
-              {tc.toolName}
-            </button>
-          ))}
-        </div>
-      )}
-
       {frameObjs.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
           {frameObjs.map((f) => (
-            <figure key={f.id} className="shrink-0 overflow-hidden rounded-md border border-zinc-800">
+            <figure key={f.id} className="shrink-0 overflow-hidden rounded-md border border-white/[0.08] transition-colors hover:border-[#3d7fff]/60">
               <img src={f.dataUrl} alt={`frame @ ${formatTime(f.timeSec)}`} className="h-20 w-auto" loading="lazy" />
-              <figcaption className="px-1 py-0.5 text-center font-mono text-[10px] text-zinc-500">
+              <figcaption className="bg-black/60 px-1.5 py-0.5 text-center font-mono text-[10px] text-[#5c93ff]">
                 {formatTime(f.timeSec)}
               </figcaption>
             </figure>

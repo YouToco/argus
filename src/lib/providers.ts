@@ -69,9 +69,10 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
   },
   {
     id: 'deepseek', name: 'DeepSeek', transport: 'openai',
-    defaultModel: 'deepseek-chat', defaultBaseURL: 'https://api.deepseek.com', baseURLPlaceholder: 'https://api.deepseek.com',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    corsNote: '浏览器直连友好。deepseek-chat 是文本模型，无视觉能力；视觉任务请换有 vision 的 provider。',
+    defaultModel: 'deepseek-v4-flash-vision-exp', defaultBaseURL: 'https://api.deepseek.com', baseURLPlaceholder: 'https://api.deepseek.com',
+    models: ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-v4-pro'],
+    visionModels: ['deepseek-v4-flash-vision-exp'],
+    corsNote: '浏览器直连友好。视觉理解选 deepseek-v4-flash-vision-exp（2026-08 实验版，支持图片输入，带推理输出）；deepseek-v4-flash / v4-pro 为纯文本。',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -180,5 +181,41 @@ export async function testConnection(cfg: ProviderConfig): Promise<ConnectionTes
         ? '跨域/CORS 失败：该端点不允许浏览器直连。请检查 baseURL 或改用支持直连的 provider。'
         : msg,
     }
+  }
+}
+
+export interface FetchModelsResult {
+  ok: boolean
+  models?: string[]
+  error?: string
+}
+
+/**
+ * Lists models from an OpenAI-compatible `GET {baseURL}/models` endpoint.
+ * Only meaningful for the 'openai' transport; other SDKs have no such REST shape.
+ */
+export async function fetchModels(cfg: ProviderConfig, presetBaseURL?: string): Promise<FetchModelsResult> {
+  if (cfg.kind !== 'openai') return { ok: false, error: '该 provider 类型不支持拉取模型列表' }
+  const root = (cfg.baseURL.trim() || presetBaseURL || '').replace(/\/+$/, '')
+  if (!root) return { ok: false, error: '请先填写 Base URL' }
+  try {
+    const res = await fetch(`${root}/models`, {
+      headers: cfg.apiKey.trim() ? { Authorization: `Bearer ${cfg.apiKey.trim()}` } : {},
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      return { ok: false, error: `HTTP ${res.status}${body ? `：${body.slice(0, 160)}` : ''}` }
+    }
+    const data = (await res.json()) as { data?: Array<{ id?: string }> }
+    const ids = (data.data ?? [])
+      .map((m) => m?.id)
+      .filter((x): x is string => typeof x === 'string' && x.length > 0)
+      .sort()
+    if (ids.length === 0) return { ok: false, error: '端点返回了空模型列表' }
+    return { ok: true, models: ids }
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e)
+    const isCors = /fetch|CORS|Failed to fetch|NetworkError|cross-origin/i.test(msg)
+    return { ok: false, error: isCors ? '跨域/CORS 失败：该端点不允许浏览器直连拉取列表。' : msg }
   }
 }

@@ -6,30 +6,33 @@ export function FrameGrid() {
 
   if (frames.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 px-1 py-8 text-center">
-        <span className="text-xl text-zinc-700">🖼️</span>
+      <div className="flex flex-col items-center gap-2 px-1 py-10 text-center">
+        <span className="mono-label text-zinc-700">frames://</span>
         <p className="text-xs text-zinc-600">抽帧结果会显示在这里</p>
-        <p className="text-[11px] text-zinc-700">agent 抽帧后可逐帧查看</p>
+        <p className="mono-label text-zinc-700">agent captures appear here</p>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {frames.map((f) => (
+    <div className="grid grid-cols-2 gap-2.5">
+      {frames.map((f, i) => (
         <figure
           key={f.id}
-          className="group overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-900/40 transition hover:border-amber-500/50"
+          style={{ animationDelay: `${Math.min(i * 60, 600)}ms` }}
+          className="fade-in group overflow-hidden rounded-md border border-white/[0.08] bg-black/40 transition-colors duration-200 hover:border-[#3d7fff]/60"
         >
-          <img
-            src={f.dataUrl}
-            alt={`frame @ ${formatTime(f.timeSec)}`}
-            className="w-full"
-            loading="lazy"
-          />
-          <figcaption className="flex items-center justify-between px-1.5 py-1 text-[10px] text-zinc-500">
-            <span className="font-mono">{formatTime(f.timeSec)}</span>
-            <span>
+          <div className="overflow-hidden">
+            <img
+              src={f.dataUrl}
+              alt={`frame @ ${formatTime(f.timeSec)}`}
+              className="w-full transition duration-300 group-hover:scale-[1.04]"
+              loading="lazy"
+            />
+          </div>
+          <figcaption className="flex items-center justify-between px-2 py-1.5">
+            <span className="font-mono text-[10px] text-[#5c93ff]">{formatTime(f.timeSec)}</span>
+            <span className="font-mono text-[10px] text-zinc-600">
               {f.width}×{f.height}
             </span>
           </figcaption>

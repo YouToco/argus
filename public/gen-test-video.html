@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<title>Argus 测试视频生成器</title>
+<style>
+  body { background: #050505; color: #eee; font-family: ui-monospace, monospace; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; }
+  canvas { border: 1px solid #333; max-width: 100%; }
+  button { background: #3d7fff; color: #000; border: 0; padding: 8px 18px; font: bold 12px ui-monospace; cursor: pointer; border-radius: 4px; }
+  button:disabled { opacity: .4; }
+  #status { font-size: 13px; color: #5c93ff; min-height: 1.5em; }
+  table { border-collapse: collapse; font-size: 12px; }
+  td { border: 1px solid #222; padding: 6px 12px; }
+  td.truth { color: #888; max-width: 560px; }
+</style>
+</head>
+<body>
+<h1>Argus 真值测试视频集</h1>
+<canvas id="cv" width="960" height="540"></canvas>
+<p id="status">idle</p>
+<table>
+  <tr><th>id</th><th>时长</th><th>真值</th><th></th></tr>
+  <tr><td>objects</td><td>32s</td><td class="truth">0-8s 红圆左→右；8-16s 蓝方块右侧静止；16-24s 绿三角中央；24-32s 红圆右→左返回</td><td><button data-scene="objects">生成</button></td></tr>
+  <tr><td>count</td><td>40s</td><td class="truth">红点全程；蓝点 0-20s；绿点 10s 起；黄点 30s 起。数量 2→3(t=10)→2(t=20)→3(t=30)</td><td><button data-scene="count">生成</button></td></tr>
+  <tr><td>text</td><td>32s</td><td class="truth">0-8s "APPLE" 白色顶部；8-16s "BANANA" 黄色中央；16-24s "42" 蓝色特大中央；24-32s "RED CAR" 红色底部</td><td><button data-scene="text">生成</button></td></tr>
+  <tr><td>flash</td><td>30s</td><td class="truth">全程灰底网格+左侧蓝方块缓慢右移；仅 t=14.0-15.0s 中央出现黄色星形闪光</td><td><button data-scene="flash">生成</button></td></tr>
+  <tr><td>long</td><td>180s</td><td class="truth">10-25s 红圆左→右；60-70s "HELLO" 白色中央；100-120s 蓝方块右侧；150-165s 绿三角中央；其余为空场景</td><td><button data-scene="long">生成（3 分钟）</button></td></tr>
+</table>
+<button id="genAll" style="padding:10px 28px;font-size:14px">依次生成全部（约 5 分钟）</button>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function base(t) {
+  ctx.fillStyle = '#181a20';
+  ctx.fillRect(0, 0, 960, 540);
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  for (let x = 0; x < 960; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 540); ctx.stroke(); }
+  for (let y = 0; y < 540; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(16, 16, 240, 64);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px ui-monospace, monospace';
+  ctx.fillText('T=' + t.toFixed(1) + 's', 28, 60);
+}
+function dot(x, y, r, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+function text(str, x, y, size, color, align = 'center') {
+  ctx.fillStyle = color; ctx.font = 'bold ' + size + 'px ui-monospace, monospace'; ctx.textAlign = align; ctx.fillText(str, x, y); ctx.textAlign = 'left';
+}
+function star(cx, cy, r, color) {
+  ctx.fillStyle = color; ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = (i * Math.PI) / 5 - Math.PI / 2;
+    const rr = i % 2 === 0 ? r : r * 0.45;
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+const scenes = {
+  objects: {
+    dur: 32,
+    draw(t) {
+      base(t);
+      const seg = Math.floor(t / 8), segT = t - seg * 8;
+      if (seg === 0) dot(120 + (segT / 8) * 720, 270, 60, '#e5362b');
+      else if (seg === 1) { ctx.fillStyle = '#2563eb'; ctx.fillRect(700, 210, 130, 130); }
+      else if (seg === 2) { ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.moveTo(480, 190); ctx.lineTo(400, 350); ctx.lineTo(560, 350); ctx.closePath(); ctx.fill(); }
+      else dot(840 - (segT / 8) * 720, 270, 60, '#e5362b');
+    },
+  },
+  count: {
+    dur: 40,
+    draw(t) {
+      base(t);
+      dot(180, 160, 42, '#e5362b');                       // A red — always
+      if (t < 20) dot(780, 160, 42, '#2563eb');           // B blue — 0-20
+      if (t >= 10) dot(480, 410, 42, '#16a34a');          // C green — from 10
+      if (t >= 30) dot(480, 160, 42, '#eab308');          // D yellow — from 30
+    },
+  },
+  text: {
+    dur: 32,
+    draw(t) {
+      base(t);
+      if (t < 8) text('APPLE', 480, 130, 72, '#ffffff');
+      else if (t < 16) text('BANANA', 480, 300, 72, '#eab308');
+      else if (t < 24) text('42', 480, 340, 160, '#3d7fff');
+      else text('RED CAR', 480, 490, 64, '#e5362b');
+    },
+  },
+  flash: {
+    dur: 30,
+    draw(t) {
+      base(t);
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(60 + (t / 30) * 240, 300, 90, 90);     // slow blue square, always
+      if (t >= 14 && t < 15) star(480, 240, 110, '#facc15');
+    },
+  },
+  long: {
+    dur: 180,
+    draw(t) {
+      base(t);
+      if (t >= 10 && t < 25) dot(120 + ((t - 10) / 15) * 720, 270, 55, '#e5362b');
+      if (t >= 60 && t < 70) text('HELLO', 480, 300, 84, '#ffffff');
+      if (t >= 100 && t < 120) { ctx.fillStyle = '#2563eb'; ctx.fillRect(720, 220, 120, 120); }
+      if (t >= 150 && t < 165) { ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.moveTo(480, 200); ctx.lineTo(410, 350); ctx.lineTo(550, 350); ctx.closePath(); ctx.fill(); }
+    },
+  },
+};
+
+// preview
+let previewId = null;
+(function preview() {
+  const t = (performance.now() / 1000) % 32;
+  scenes.objects.draw(t);
+  previewId = requestAnimationFrame(preview);
+})();
+
+const status = document.getElementById('status');
+const workerBlob = new Blob(['setInterval(()=>postMessage(0),100)'], { type: 'text/javascript' });
+
+function recordScene(id) {
+  return new Promise((resolve) => {
+    cancelAnimationFrame(previewId);
+    const sc = scenes[id];
+    const stream = cv.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2500000 });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'argus-test-' + id + '.webm';
+      a.click();
+      status.textContent = 'done ' + id + ' (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB)';
+      resolve();
+    };
+    const worker = new Worker(URL.createObjectURL(workerBlob));
+    const t0 = performance.now();
+    // worker tick 不受后台标签页 rAF 冻结影响
+    worker.onmessage = () => {
+      const t = (performance.now() - t0) / 1000;
+      if (t >= sc.dur) { worker.terminate(); rec.stop(); return; }
+      sc.draw(t);
+      status.textContent = 'recording ' + id + '… ' + t.toFixed(1) + 's / ' + sc.dur + 's';
+    };
+    rec.start(500);
+  });
+}
+
+function setButtons(disabled) {
+  document.querySelectorAll('button').forEach((b) => (b.disabled = disabled));
+}
+
+document.querySelectorAll('button[data-scene]').forEach((b) => {
+  b.addEventListener('click', async () => {
+    setButtons(true);
+    await recordScene(b.dataset.scene);
+    setButtons(false);
+  });
+});
+
+document.getElementById('genAll').addEventListener('click', async () => {
+  setButtons(true);
+  for (const id of Object.keys(scenes)) await recordScene(id);
+  status.textContent = 'all done';
+  setButtons(false);
+});
+</script>
+</body>
+</html>

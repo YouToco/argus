@@ -112,6 +112,26 @@ export class VideoSession {
       video.addEventListener('loadedmetadata', onMeta)
       video.addEventListener('error', onErr)
     })
+    // MediaRecorder-produced WebM often reports duration = Infinity until a
+    // large seek forces the browser to discover the real end of the stream.
+    if (!Number.isFinite(video.duration)) {
+      const probeTo = (t: number) =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            video.removeEventListener('seeked', onSeeked)
+            resolve()
+          }, 5000)
+          const onSeeked = () => {
+            clearTimeout(timer)
+            video.removeEventListener('seeked', onSeeked)
+            resolve()
+          }
+          video.addEventListener('seeked', onSeeked)
+          video.currentTime = t
+        })
+      await probeTo(1e7) // jump past any plausible end -> browser fixes duration
+      await probeTo(0)
+    }
     return new VideoSession(file, url, video)
   }
 

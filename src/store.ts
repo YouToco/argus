@@ -6,9 +6,21 @@ import type {
   ToolActivity,
   VideoFileInfo,
 } from './types'
+import type { SessionMeta } from './lib/db'
 import { loadSettings, saveSettings } from './lib/settings'
 import { VideoSession } from './lib/video/session'
+import { memory } from './lib/agent/memory'
+import type { MemoryEntry } from './lib/agent/memory'
 import { BUILTIN_PRESETS, resolveProviderConfig, type ProviderPreset } from './lib/providers'
+
+/**
+ * In-memory frame window. Every frame is also persisted to IndexedDB, so
+ * evicted frames can be lazily reloaded — this cap is what keeps 24h-video
+ * analyses (hundreds of frames × ~50KB base64) from blowing up tab memory.
+ */
+export const MAX_FRAMES_IN_MEMORY = 200
+
+export const LAST_SESSION_KEY = 'argus:lastSession'
 
 interface AppState {
   /** available providers (curated built-ins + models.dev catalog), for the dropdown + metadata */
@@ -25,6 +37,10 @@ interface AppState {
   running: boolean
   /** catalog loading status for offline-aware UI */
   catalogStatus: 'loading' | 'ready' | 'error'
+
+  /** persistence: active analysis session + history list */
+  activeSessionId: string | null
+  sessions: SessionMeta[]
 
   setActiveProvider: (id: string) => void
   updateConfig: (id: string, patch: Partial<ProviderConfig>) => void
@@ -43,6 +59,19 @@ interface AppState {
   clearActivities: () => void
   setRunning: (v: boolean) => void
   reset: () => void
+
+  setActiveSession: (id: string | null) => void
+  setSessions: (list: SessionMeta[]) => void
+  upsertSessionMeta: (meta: SessionMeta) => void
+  removeSessionMeta: (id: string) => void
+  /** load a persisted session back into the UI (video file itself must be re-picked) */
+  hydrate: (p: {
+    sessionId: string
+    videoInfo: VideoFileInfo | null
+    messages: ChatMessage[]
+    frames: ExtractedFrame[]
+    memoryEntries: MemoryEntry[]
+  }) => void
 }
 
 const initial = loadSettings()
@@ -59,6 +88,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   activities: [],
   running: false,
   catalogStatus: 'loading',
+  activeSessionId: null,
+  sessions: [],
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id })
@@ -96,7 +127,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
     set({ session: s })
   },
   setVideoInfo: (i) => set({ videoInfo: i }),
-  addFrames: (f) => set((st) => ({ frames: [...st.frames, ...f] })),
+  addFrames: (f) =>
+    set((st) => ({ frames: [...st.frames, ...f].slice(-MAX_FRAMES_IN_MEMORY) })),
   clearFrames: () => set({ frames: [] }),
   addMessage: (m) => set((st) => ({ messages: [...st.messages, m] })),
   appendToMessage: (id, delta) =>
@@ -110,6 +142,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setRunning: (v) => set({ running: v }),
   reset: () => {
     get().session?.destroy()
+    memory.clear()
+    localStorage.removeItem(LAST_SESSION_KEY)
     set({
       session: null,
       videoInfo: null,
@@ -117,7 +151,36 @@ export const useAppStore = create<AppState>()((set, get) => ({
       messages: [],
       activities: [],
       running: false,
+      activeSessionId: null,
     })
+  },
+
+  setActiveSession: (id) => {
+    set({ activeSessionId: id })
+    if (id) localStorage.setItem(LAST_SESSION_KEY, id)
+    else localStorage.removeItem(LAST_SESSION_KEY)
+  },
+  setSessions: (list) => set({ sessions: list }),
+  upsertSessionMeta: (meta) =>
+    set((st) => {
+      const idx = st.sessions.findIndex((s) => s.id === meta.id)
+      const sessions = idx >= 0 ? st.sessions.map((s) => (s.id === meta.id ? meta : s)) : [meta, ...st.sessions]
+      return { sessions: sessions.sort((a, b) => b.updatedAt - a.updatedAt) }
+    }),
+  removeSessionMeta: (id) => set((st) => ({ sessions: st.sessions.filter((s) => s.id !== id) })),
+
+  hydrate: (p) => {
+    get().session?.destroy()
+    memory.restore(p.memoryEntries)
+    set({
+      session: null,
+      videoInfo: p.videoInfo,
+      frames: p.frames.slice(-MAX_FRAMES_IN_MEMORY),
+      messages: p.messages,
+      activities: [],
+      running: false,
+    })
+    get().setActiveSession(p.sessionId)
   },
 }))
 

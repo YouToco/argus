@@ -48,6 +48,37 @@ function dataUrlToImagePart(dataUrl: string): ImagePart {
   return { type: 'image', image: dataUrl }
 }
 
+/**
+ * Keep only the most recent image batches in the outbound context. Frames from
+ * older tool calls are replaced with a text pointer — the model can re-fetch
+ * any frame via list_frames / extract_frame_at. This is what makes hour-long
+ * analyses affordable: without it every step re-sends every frame ever drawn.
+ */
+export const KEEP_IMAGE_BATCHES = 3
+
+export function pruneOldImages(messages: ModelMessage[]): ModelMessage[] {
+  const imgIdx: number[] = []
+  messages.forEach((m, i) => {
+    if (m.role === 'user' && Array.isArray(m.content) && m.content.some((p) => p.type === 'image')) {
+      imgIdx.push(i)
+    }
+  })
+  if (imgIdx.length <= KEEP_IMAGE_BATCHES) return messages
+  const keep = new Set(imgIdx.slice(-KEEP_IMAGE_BATCHES))
+  return messages.map((m, i) => {
+    if (keep.has(i) || m.role !== 'user' || !Array.isArray(m.content)) return m
+    if (!m.content.some((p) => p.type === 'image')) return m
+    return {
+      ...m,
+      content: m.content.map((p) =>
+        p.type === 'image'
+          ? { type: 'text' as const, text: '[此前抽取的帧图已从上下文省略；可用 list_frames 查 id、extract_frame_at 重新获取]' }
+          : p,
+      ),
+    }
+  })
+}
+
 function buildAiTools(registry: ArgusTool[]): ToolSet {
   const set: Record<string, unknown> = {}
   for (const t of registry) {
@@ -93,7 +124,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
   const context: AgentContext = {
     ...baseContext,
     runSubagent: (input: SubagentInput) =>
-      runSubagent(input, baseContext, model, signal, depth + 1),
+      runSubagent(input, baseContext, model, signal, depth + 1, opts.onActivity),
   }
 
   let finalText = ''
@@ -102,7 +133,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     const result = streamText({
       model,
       system,
-      messages,
+      messages: pruneOldImages(messages),
       tools: aiTools,
       stopWhen: stepCountIs(1),
       abortSignal: signal,
@@ -191,6 +222,7 @@ async function runSubagent(
   model: LanguageModel,
   signal: AbortSignal | undefined,
   depth: number,
+  onActivity?: (a: ToolActivity) => void,
 ): Promise<string> {
   const [s, e] = input.time_range
   const registry = buildToolRegistry().filter((t) => t.name !== 'spawn_subagent')
@@ -208,6 +240,7 @@ async function runSubagent(
     maxSteps: input.max_steps ?? 8,
     signal,
     depth,
+    onActivity,
   })
   return result.trim() || '(子代理未产出结论)'
 }

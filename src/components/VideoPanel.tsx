@@ -3,6 +3,8 @@ import { useAppStore } from '../store'
 import { VideoSession } from '../lib/video/session'
 import { memory } from '../lib/agent/memory'
 import { formatBitrate, formatBytes, formatDuration, formatFps } from '../lib/format'
+import { FilmIcon } from './icons'
+import { startSession } from '../lib/persistence'
 import type { VideoFileInfo } from '../types'
 
 export function VideoPanel() {
@@ -20,13 +22,22 @@ export function VideoPanel() {
   async function loadFile(file: File) {
     setError(null)
     setLoading(true)
+    // 同名同大小 = 历史会话重新挂载：保留对话/记忆/帧，兑现 "reload to continue"
+    const st = useAppStore.getState()
+    const reattach = Boolean(
+      st.activeSessionId && st.videoInfo && st.videoInfo.name === file.name && st.videoInfo.sizeBytes === file.size,
+    )
     try {
       const s = await VideoSession.create(file)
       setSession(s)
       setVideoInfo(s.basicInfo())
-      clearFrames()
-      memory.clear()
-      // rich metadata (fps/codec/bitrate) in the background
+      if (!reattach) {
+        clearFrames()
+        memory.clear()
+        // 新视频 = 新分析会话：清空对话并立即建档持久化
+        useAppStore.setState({ messages: [], activities: [] })
+        void startSession(file.name, file.size).catch(() => {})
+      }
       s.getInfo()
         .then((full) => setVideoInfo(full))
         .catch(() => {})
@@ -46,47 +57,62 @@ export function VideoPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">
-          视频
+        <h2 className="mono-label flex items-center gap-2 text-zinc-400">
+          <span className="h-1.5 w-1.5 bg-[#3d7fff]" />
+          video source://
         </h2>
         {session && (
-          <button
-            onClick={reset}
-            className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
-          >
-            重置
+          <button onClick={reset} className="mono-label text-zinc-600 transition hover:text-white">
+            reset
           </button>
         )}
       </div>
 
       {!session ? (
-        <button
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={`group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition ${
-            dragging
-              ? 'border-amber-500 bg-amber-500/10'
-              : 'border-zinc-700/80 hover:border-zinc-500 hover:bg-zinc-900/40'
-          }`}
-        >
-          <span className="text-3xl opacity-80 transition group-hover:scale-105">🎞️</span>
-          <span className="text-sm font-medium text-zinc-200">
-            {loading ? '加载中…' : '点击或拖入本地视频'}
-          </span>
-          <span className="text-xs leading-relaxed text-zinc-500">视频仅在本地浏览器处理，不会上传</span>
-        </button>
+        <>
+          {videoInfo && <InfoCard info={videoInfo} detached />}
+          <button
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            className={`group relative flex flex-col items-center justify-center gap-4 rounded-md border border-dashed text-center transition-colors duration-200 ${
+              videoInfo ? 'px-6 py-7' : 'px-6 py-12'
+            } ${
+              dragging
+                ? 'border-[#3d7fff] bg-[#3d7fff]/10'
+                : 'border-white/15 hover:border-[#3d7fff]/50 hover:bg-[#3d7fff]/5'
+            }`}
+          >
+            <span className="mono-label absolute left-2 top-1.5 text-zinc-700">+</span>
+            <span className="mono-label absolute right-2 top-1.5 text-zinc-700">+</span>
+            <span className="mono-label absolute bottom-1.5 left-2 text-zinc-700">+</span>
+            <span className="mono-label absolute bottom-1.5 right-2 text-zinc-700">+</span>
+
+            <FilmIcon size={videoInfo ? 24 : 32} className="text-zinc-300 transition-transform duration-200 group-hover:scale-110" />
+            <div className="space-y-1.5">
+              <span className="block text-sm font-bold tracking-tight text-white">
+                {loading ? '正在加载…' : videoInfo ? '重新加载视频文件以继续分析' : '点击或拖入本地视频'}
+              </span>
+              <span className="mono-label block text-zinc-600">local only · never uploaded</span>
+            </div>
+            {loading && <div className="loading-bar h-0.5 w-28" />}
+          </button>
+        </>
       ) : (
         videoInfo && <InfoCard info={videoInfo} />
       )}
 
-      {error && <p className="rounded-md bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-400">{error}</p>}
+      {error && (
+        <div className="fade-in rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-400">
+          {error}
+        </div>
+      )}
 
       <input
         ref={inputRef}
@@ -103,7 +129,7 @@ export function VideoPanel() {
   )
 }
 
-function InfoCard({ info }: { info: VideoFileInfo }) {
+function InfoCard({ info, detached }: { info: VideoFileInfo; detached?: boolean }) {
   const rows: Array<[string, string]> = [
     ['文件名', info.name],
     ['大小', formatBytes(info.sizeBytes)],
@@ -116,19 +142,33 @@ function InfoCard({ info }: { info: VideoFileInfo }) {
     ['音频', info.hasAudio ? '有' : '-'],
   ]
   return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3">
-      <dl className="space-y-1.5">
+    <div className="fade-in rounded-md border border-white/[0.08] bg-black/40 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="mono-label text-zinc-500">video info</span>
+        {detached ? (
+          <span className="mono-label flex items-center gap-1.5 text-amber-400/90">
+            <span className="h-1.5 w-1.5 bg-amber-400" />
+            file not loaded
+          </span>
+        ) : (
+          <span className="mono-label flex items-center gap-1.5 text-[#5c93ff]">
+            <span className="h-1.5 w-1.5 bg-[#3d7fff]" />
+            ready
+          </span>
+        )}
+      </div>
+      <dl className="space-y-2">
         {rows.map(([k, v]) => (
-          <div key={k} className="flex items-baseline justify-between gap-2">
-            <dt className="shrink-0 text-xs text-zinc-500">{k}</dt>
-            <dd className="truncate text-right text-xs font-mono text-zinc-200" title={v}>
+          <div key={k} className="flex items-baseline justify-between gap-3">
+            <dt className="shrink-0 text-xs text-zinc-600">{k}</dt>
+            <dd className="truncate text-right font-mono text-xs text-zinc-200" title={v}>
               {v}
             </dd>
           </div>
         ))}
       </dl>
-      <p className="mt-2 border-t border-zinc-800 pt-2 text-[11px] text-zinc-600">
-        已本地载入 · agent 可读取详细信息
+      <p className="mono-label mt-3 border-t border-white/[0.06] pt-3 text-zinc-600">
+        {detached ? 'metadata restored · frames & memory intact' : 'loaded locally · agent can probe'}
       </p>
     </div>
   )
