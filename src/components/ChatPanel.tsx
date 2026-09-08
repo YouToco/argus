@@ -134,7 +134,7 @@ export function ChatPanel() {
   return (
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="scroll-thin relative flex-1 overflow-y-auto">
-        <div ref={contentRef} className="space-y-5 px-5 py-5">
+        <div ref={contentRef} className="flex min-h-full flex-col space-y-5 px-5 py-5">
           {messages.length === 0 && <EmptyState />}
           {messages.map((m) => (
             <Message
@@ -230,11 +230,11 @@ export function ChatPanel() {
 
 function EmptyState() {
   return (
-    <div className="fade-in flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
+    <div className="fade-in flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       <p className="mono-label text-[#5c93ff]">long-video understanding · agent harness</p>
       <div className="flex items-center gap-3">
-        <EyeIcon size={56} className="text-[#3d7fff]" />
-        <h2 className="text-6xl font-extrabold tracking-tighter text-white">
+        <EyeIcon size={56} className="shrink-0 text-[#3d7fff]" />
+        <h2 className="whitespace-nowrap text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-tighter text-white">
           Argus<span className="caret ml-1.5" />
         </h2>
       </div>
