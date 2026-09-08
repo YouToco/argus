@@ -1,12 +1,7 @@
-import {
-  jsonSchema,
-  stepCountIs,
-  streamText,
-  tool as aiTool,
-} from 'ai'
-import type { ImagePart, JSONSchema7, LanguageModel, ModelMessage, TextPart, ToolCallPart, ToolResultPart, ToolSet } from 'ai'
+import { stepCountIs, streamText, tool as aiTool } from 'ai'
+import type { FilePart, LanguageModel, ModelMessage, ToolSet } from 'ai'
 import type { ToolActivity } from '../../types'
-import type { AgentContext, ArgusTool, SubagentInput, ToolResult } from './tools'
+import type { AgentContext, SubagentInput, ToolResult } from './tools'
 import { buildToolRegistry } from './tools'
 
 // ---------------------------------------------------------------------------
@@ -42,10 +37,10 @@ function summarize(text: string, max = 220): string {
   return t.length > max ? `${t.slice(0, max)}…` : t
 }
 
-function dataUrlToImagePart(dataUrl: string): ImagePart {
+function dataUrlToFilePart(dataUrl: string): FilePart {
   const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl)
-  if (m) return { type: 'image', image: m[2], mediaType: m[1] }
-  return { type: 'image', image: dataUrl }
+  if (m) return { type: 'file', data: m[2], mediaType: m[1] }
+  return { type: 'file', data: dataUrl, mediaType: 'image' }
 }
 
 /**
@@ -56,10 +51,14 @@ function dataUrlToImagePart(dataUrl: string): ImagePart {
  */
 export const KEEP_IMAGE_BATCHES = 3
 
+function isImagePart(p: { type: string; mediaType?: string }): boolean {
+  return p.type === 'file' && (p.mediaType === 'image' || Boolean(p.mediaType?.startsWith('image/')))
+}
+
 export function pruneOldImages(messages: ModelMessage[]): ModelMessage[] {
   const imgIdx: number[] = []
   messages.forEach((m, i) => {
-    if (m.role === 'user' && Array.isArray(m.content) && m.content.some((p) => p.type === 'image')) {
+    if (m.role === 'user' && Array.isArray(m.content) && m.content.some(isImagePart)) {
       imgIdx.push(i)
     }
   })
@@ -67,11 +66,11 @@ export function pruneOldImages(messages: ModelMessage[]): ModelMessage[] {
   const keep = new Set(imgIdx.slice(-KEEP_IMAGE_BATCHES))
   return messages.map((m, i) => {
     if (keep.has(i) || m.role !== 'user' || !Array.isArray(m.content)) return m
-    if (!m.content.some((p) => p.type === 'image')) return m
+    if (!m.content.some(isImagePart)) return m
     return {
       ...m,
       content: m.content.map((p) =>
-        p.type === 'image'
+        isImagePart(p)
           ? { type: 'text' as const, text: '[此前抽取的帧图已从上下文省略；可用 list_frames 查 id、extract_frame_at 重新获取]' }
           : p,
       ),
@@ -79,19 +78,17 @@ export function pruneOldImages(messages: ModelMessage[]): ModelMessage[] {
   })
 }
 
-function buildAiTools(registry: ArgusTool[]): ToolSet {
-  const set: Record<string, unknown> = {}
-  for (const t of registry) {
-    set[t.name] = aiTool({
-      description: t.description,
-      inputSchema: jsonSchema(t.parameters as JSONSchema7),
-    })
-  }
-  return set as ToolSet
-}
-
 // ---------------------------------------------------------------------------
 // Agent loop
+//
+// The loop itself is driven by the AI SDK: one `streamText` call runs up to
+// `maxSteps` steps, executes tools (whose execute wrappers report activities
+// and collect produced frames), and keeps going until the model answers with
+// plain text. Two pieces remain ours because they are the product's core:
+//   - prepareStep injects freshly extracted frames as a user message so any
+//     vision model can see them (images in tool results are not portable
+//     across OpenAI-compatible gateways), and
+//   - pruneOldImages keeps the outbound context bounded on long runs.
 // ---------------------------------------------------------------------------
 
 export interface RunAgentOptions {
@@ -106,7 +103,7 @@ export interface RunAgentOptions {
   depth?: number
 }
 
-/** Runs the manual tool loop. Returns the final assistant text. */
+/** Runs the agent. Returns the final step's text (the answer). */
 export async function runAgent(opts: RunAgentOptions): Promise<string> {
   const {
     model,
@@ -115,101 +112,81 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     maxSteps = 24,
     signal,
     depth = 0,
+    onTextDelta,
+    onActivity,
   } = opts
-  const messages: ModelMessage[] = [...opts.messages]
-  const registry = buildToolRegistry()
-  const aiTools = buildAiTools(registry)
 
-  // context for this run: sub-agents spawn from here run one level deeper
+  // frames produced by tool executions, handed to the model before the next step
+  let pendingImages: { dataUrl: string; label: string }[] = []
+
   const context: AgentContext = {
     ...baseContext,
     runSubagent: (input: SubagentInput) =>
-      runSubagent(input, baseContext, model, signal, depth + 1, opts.onActivity),
+      runSubagent(input, baseContext, model, signal, depth + 1, onActivity),
   }
 
-  let finalText = ''
+  // sub-agents cannot spawn further sub-agents
+  const registry = buildToolRegistry().filter((t) => depth === 0 || t.name !== 'spawn_subagent')
 
-  for (let step = 0; step < maxSteps; step++) {
-    const result = streamText({
-      model,
-      system,
-      messages: pruneOldImages(messages),
-      tools: aiTools,
-      stopWhen: stepCountIs(1),
-      abortSignal: signal,
-    })
-
-    let text = ''
-    for await (const delta of result.textStream) {
-      text += delta
-      opts.onTextDelta?.(delta)
-    }
-    finalText = text
-
-    const toolCalls = await result.toolCalls
-    if (toolCalls.length === 0) break
-
-    // assistant message carrying the tool calls
-    const assistantContent: Array<TextPart | ToolCallPart> = []
-    if (text.trim()) assistantContent.push({ type: 'text', text })
-    for (const tc of toolCalls) {
-      assistantContent.push({
-        type: 'tool-call',
-        toolCallId: tc.toolCallId,
-        toolName: tc.toolName,
-        input: tc.input,
-      })
-    }
-    messages.push({ role: 'assistant', content: assistantContent })
-
-    // execute tools ourselves
-    const toolResultParts: ToolResultPart[] = []
-    const images: { dataUrl: string; label: string }[] = []
-
-    for (const tc of toolCalls) {
-      const def = registry.find((t) => t.name === tc.toolName)
-      const actId = nextId()
-      opts.onActivity?.({ id: actId, toolName: tc.toolName, input: tc.input, status: 'running', depth })
-
-      let out: ToolResult
-      if (!def) {
-        out = { text: `未知工具：${tc.toolName}` }
-        opts.onActivity?.({ id: actId, toolName: tc.toolName, input: tc.input, status: 'error', summary: out.text, depth })
-      } else {
+  const tools: Record<string, unknown> = {}
+  for (const t of registry) {
+    tools[t.name] = aiTool({
+      description: t.description,
+      inputSchema: t.inputSchema,
+      execute: async (input: unknown) => {
+        const actId = nextId()
+        onActivity?.({ id: actId, toolName: t.name, input, status: 'running', depth })
+        let out: ToolResult
         try {
-          out = await def.execute(tc.input, context)
-          opts.onActivity?.({ id: actId, toolName: tc.toolName, input: tc.input, status: 'done', summary: summarize(out.text), depth })
+          out = await t.execute(input, context)
+          onActivity?.({ id: actId, toolName: t.name, input, status: 'done', summary: summarize(out.text), depth })
         } catch (e) {
           out = { text: `工具执行失败：${(e as Error)?.message ?? String(e)}` }
-          opts.onActivity?.({ id: actId, toolName: tc.toolName, input: tc.input, status: 'error', summary: out.text, depth })
+          onActivity?.({ id: actId, toolName: t.name, input, status: 'error', summary: out.text, depth })
         }
-      }
-
-      toolResultParts.push({
-        type: 'tool-result',
-        toolCallId: tc.toolCallId,
-        toolName: tc.toolName,
-        output: { type: 'text', value: out.text },
-      })
-      if (out.images) images.push(...out.images)
-    }
-
-    messages.push({ role: 'tool', content: toolResultParts })
-
-    // inject freshly produced frames as a user message so the model sees them
-    if (images.length > 0) {
-      const parts: Array<TextPart | ImagePart> = [
-        {
-          type: 'text',
-          text: `以下是你刚才通过抽帧/放大得到的 ${images.length} 张画面，请仔细观察后继续分析：`,
-        },
-        ...images.map((img) => dataUrlToImagePart(img.dataUrl)),
-      ]
-      messages.push({ role: 'user', content: parts })
-    }
+        if (out.images) pendingImages.push(...out.images)
+        return out.text
+      },
+    })
   }
 
-  return finalText
+  const result = streamText({
+    model,
+    system,
+    messages: opts.messages,
+    tools: tools as ToolSet,
+    stopWhen: stepCountIs(maxSteps),
+    abortSignal: signal,
+    prepareStep: ({ messages }) => {
+      let msgs = messages
+      if (pendingImages.length > 0) {
+        msgs = [
+          ...messages,
+          {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'text' as const,
+                text: `以下是你刚才通过抽帧/放大得到的 ${pendingImages.length} 张画面，请仔细观察后继续分析：`,
+              },
+              ...pendingImages.map((img) => dataUrlToFilePart(img.dataUrl)),
+            ],
+          },
+        ]
+        pendingImages = []
+      }
+      return { messages: pruneOldImages(msgs) }
+    },
+  })
+
+  for await (const delta of result.textStream) {
+    onTextDelta?.(delta)
+  }
+
+  // the answer is the last step's text — intermediate steps may hold reasoning
+  // while tools were still being called
+  const steps = await result.steps
+  return steps.at(-1)?.text ?? ''
 }
 
 // ---------------------------------------------------------------------------
@@ -225,8 +202,6 @@ async function runSubagent(
   onActivity?: (a: ToolActivity) => void,
 ): Promise<string> {
   const [s, e] = input.time_range
-  const registry = buildToolRegistry().filter((t) => t.name !== 'spawn_subagent')
-  const context: AgentContext = { ...baseContext }
   const result = await runAgent({
     model,
     system: SUBAGENT_PROMPT,
@@ -236,7 +211,7 @@ async function runSubagent(
         content: `请分析视频 ${s.toFixed(2)}s ~ ${e.toFixed(2)}s 时间段。目标：${input.goal}`,
       },
     ],
-    context,
+    context: { ...baseContext },
     maxSteps: input.max_steps ?? 8,
     signal,
     depth,

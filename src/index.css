@@ -1,5 +1,20 @@
 @import 'tailwindcss';
 
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
+
+@theme {
+  /* shadcn-style tokens consumed by streamdown's default code-block & table
+     components, mapped onto the dark editorial palette. */
+  --color-background: #0a0a0a;
+  --color-foreground: #d4d4d8;
+  --color-border: rgb(255 255 255 / 0.08);
+  --color-sidebar: rgb(0 0 0 / 0.4);
+  --color-muted: rgb(255 255 255 / 0.06);
+  --color-muted-foreground: #71717a;
+  --color-primary: #3d7fff;
+}
+
 :root {
   color-scheme: dark;
   --bg: #050505;
@@ -20,6 +35,9 @@ body {
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
 }
+
+/* lucide icons default to the thin editorial stroke */
+svg.lucide { stroke-width: 1.75px; }
 
 /* dot-grid texture, fading out towards the bottom */
 .bg-grid {
@@ -94,3 +112,16 @@ body {
 @keyframes ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
 
 ::selection { background: rgba(61, 127, 255, 0.4); }
+
+/* --- streamdown dark-editorial polish (code blocks, tables, caret) --- */
+.md-root [data-streamdown="code-block"],
+.md-root [data-streamdown="table-wrapper"],
+.md-root [data-streamdown="mermaid-block"] { border-radius: 6px; margin: 0.625rem 0; }
+.md-root [data-streamdown="code-block-body"] { font-size: 12.5px; }
+.md-root [data-streamdown="code-block"] [data-streamdown="code-block-header"] { height: auto; padding-block: 2px; }
+.md-root [data-streamdown="table-wrapper"] table { font-size: 12px; }
+.md-root [data-streamdown="table-wrapper"] th,
+.md-root [data-streamdown="table-wrapper"] td { padding: 6px 12px; }
+.md-root [data-streamdown="code-block-body"],
+.md-root [data-streamdown="table-wrapper"] [role="presentation"],
+.md-root [data-streamdown="table-wrapper"] > div:last-child { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }

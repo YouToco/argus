@@ -11,7 +11,7 @@ function imageBatch(n: number): ModelMessage {
     role: 'user',
     content: [
       { type: 'text', text: `batch ${n} 的帧图：` },
-      { type: 'image', image: 'AAAA', mediaType: 'image/jpeg' },
+      { type: 'file', data: 'AAAA', mediaType: 'image/jpeg' },
     ],
   }
 }
@@ -31,7 +31,7 @@ describe('pruneOldImages', () => {
     for (let i = 1; i <= total; i++) {
       const m = out[i]
       const parts = m.content as Array<{ type: string; text?: string }>
-      const images = parts.filter((p) => p.type === 'image')
+      const images = parts.filter((p) => p.type === 'file')
       const placeholders = parts.filter(
         (p) => p.type === 'text' && typeof p.text === 'string' && p.text.includes('已从上下文省略'),
       )
@@ -45,7 +45,7 @@ describe('pruneOldImages', () => {
     }
     // 原始消息不被修改（返回新数组新对象）
     const first = msgs[1].content as Array<{ type: string }>
-    expect(first.some((p) => p.type === 'image')).toBe(true)
+    expect(first.some((p) => p.type === 'file')).toBe(true)
   })
 
   it('does not touch non-image user messages', () => {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useStickToBottom } from 'use-stick-to-bottom'
+import { Check, ChevronDown, Square, X } from 'lucide-react'
 import { useAppStore, getActiveProvider } from '../store'
 import { buildModel } from '../lib/providers'
 import { SYSTEM_PROMPT, runAgent } from '../lib/agent/harness'
@@ -8,7 +10,7 @@ import type { AgentContext } from '../lib/agent/tools'
 import type { ChatMessage, ExtractedFrame, ToolActivity } from '../types'
 import { formatTime } from '../lib/format'
 import { loadFrameById } from '../lib/db'
-import { CheckIcon, ChevronDownIcon, EyeIcon, StopIcon, XIcon } from './icons'
+import { EyeIcon } from './icons'
 import { Markdown } from './Markdown'
 
 let msgSeq = 0
@@ -29,11 +31,10 @@ export function ChatPanel() {
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, activities])
+  // stick to the newest content while streaming, but let the user freely
+  // scroll back up without being yanked to the bottom on every token
+  const { scrollRef, contentRef, scrollToBottom, isAtBottom } = useStickToBottom({ resize: 'smooth', initial: 'smooth' })
 
   const lastActivity = activities.length > 0 ? activities[activities.length - 1] : null
 
@@ -62,6 +63,7 @@ export function ChatPanel() {
     useAppStore.getState().addMessage(userMsg)
     useAppStore.getState().addMessage(asstMsg)
     useAppStore.getState().clearActivities()
+    void scrollToBottom()
 
     const startFrames = useAppStore.getState().frames.length
     const startActs = useAppStore.getState().activities.length
@@ -131,17 +133,30 @@ export function ChatPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="scroll-thin flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        {messages.length === 0 && <EmptyState />}
-        {messages.map((m) => (
-          <Message
-            key={m.id}
-            message={m}
-            frames={frames}
-            liveActivities={m.pending ? activities : undefined}
-            running={running}
-          />
-        ))}
+      <div ref={scrollRef} className="scroll-thin relative flex-1 overflow-y-auto">
+        <div ref={contentRef} className="space-y-5 px-5 py-5">
+          {messages.length === 0 && <EmptyState />}
+          {messages.map((m) => (
+            <Message
+              key={m.id}
+              message={m}
+              frames={frames}
+              liveActivities={m.pending ? activities : undefined}
+              running={running}
+            />
+          ))}
+        </div>
+
+        {!isAtBottom && (
+          <button
+            type="button"
+            onClick={() => void scrollToBottom()}
+            className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-white/10 bg-[#0a0a0a]/90 text-zinc-300 shadow-lg shadow-black backdrop-blur-sm transition-colors hover:border-[#3d7fff]/60 hover:text-[#5c93ff]"
+            aria-label="回到底部"
+          >
+            <ChevronDown size={15} />
+          </button>
+        )}
       </div>
 
       {videoInfo && !session && (
@@ -165,7 +180,7 @@ export function ChatPanel() {
               <span className="mono-label text-zinc-500">thinking…</span>
             )}
             <button onClick={stop} className="btn-ghost mono-label ml-auto flex items-center gap-1.5 rounded-sm px-2.5 py-1">
-              <StopIcon size={10} />
+              <Square size={9} fill="currentColor" strokeWidth={0} />
               stop
             </button>
           </div>
@@ -200,7 +215,7 @@ export function ChatPanel() {
           >
             {running ? (
               <>
-                <StopIcon size={10} />
+                <Square size={9} fill="currentColor" strokeWidth={0} />
                 停止
               </>
             ) : (
@@ -286,14 +301,14 @@ function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: 
         {live ? (
           <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
         ) : (
-          <CheckIcon size={11} className="shrink-0 text-emerald-400" />
+          <Check size={11} className="shrink-0 text-emerald-400" />
         )}
         <span className="mono-label text-zinc-400">
           {live ? `working · ${mainCount} steps` : `process · ${mainCount} steps`}
           {subCount > 0 ? ` · ${subCount} subagent` : ''}
           {live && runningCount > 0 ? ` · ${runningCount} running` : ''}
         </span>
-        <ChevronDownIcon
+        <ChevronDown
           size={12}
           className={`ml-auto shrink-0 text-zinc-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
@@ -335,9 +350,9 @@ function ProcessItem({ activity: a }: { activity: ToolActivity }) {
         {a.status === 'running' ? (
           <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#3d7fff]" />
         ) : a.status === 'error' ? (
-          <XIcon size={10} className="shrink-0 text-red-400" />
+          <X size={10} className="shrink-0 text-red-400" />
         ) : (
-          <CheckIcon size={10} className="shrink-0 text-emerald-500/80" />
+          <Check size={10} className="shrink-0 text-emerald-500/80" />
         )}
         <span className={`shrink-0 font-mono text-[11px] ${isSub ? 'text-[#5c93ff]/80' : 'text-zinc-300'}`}>
           {a.toolName}
@@ -392,7 +407,7 @@ function useLazyFrames(frameIds: string[] | undefined, skip: boolean) {
     void (async () => {
       const loaded: ExtractedFrame[] = []
       for (const fid of missing.slice(0, 24)) {
-        const f = await loadFrameById<ExtractedFrame>(activeSessionId, fid).catch(() => undefined)
+        const f = await loadFrameById(activeSessionId, fid).catch(() => undefined)
         if (f) loaded.push(f)
       }
       if (loaded.length > 0) useAppStore.getState().addFrames(loaded)
@@ -435,10 +450,7 @@ function Message({
 
       <div className="max-w-full rounded-md rounded-bl-none border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-zinc-200">
         {message.content ? (
-          <>
-            <Markdown content={message.content} />
-            {message.pending && running && <span className="caret ml-1" />}
-          </>
+          <Markdown content={message.content} streaming={message.pending && running} />
         ) : (
           message.pending && (
             <span className="mono-label flex items-center gap-2 text-zinc-600">

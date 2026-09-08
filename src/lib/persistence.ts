@@ -9,7 +9,7 @@ import type { MemoryEntry } from './agent/memory'
 export async function restoreSession(id: string): Promise<boolean> {
   const [messages, frames, memoryEntries] = await Promise.all([
     db.loadMessages<ChatMessage[]>(id),
-    db.loadFrames<ExtractedFrame>(id),
+    db.loadFrames(id),
     db.loadMemoryEntries<MemoryEntry>(id),
   ])
   if (!messages) return false

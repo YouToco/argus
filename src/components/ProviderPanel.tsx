@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from 'cmdk'
+import * as Dialog from '@radix-ui/react-dialog'
+import { Check, ChevronDown, RefreshCw, Search, X } from 'lucide-react'
 import { fetchModels, testConnection } from '../lib/providers'
 import type { ProviderPreset } from '../lib/providers'
 import { useAppStore } from '../store'
-import { CheckIcon, ChevronDownIcon, RefreshIcon, SearchIcon, XIcon } from './icons'
 
 const BADGE_STYLE: Record<ProviderPreset['badge'], string> = {
   official: 'border-emerald-500/40 text-emerald-400',
@@ -94,52 +95,50 @@ function ProviderSelect({
             </span>
           )}
         </span>
-        <ChevronDownIcon size={14} className={`shrink-0 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`shrink-0 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            {...popoverAnim}
-            className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-md border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black"
-          >
-            <Command shouldFilter filter={providerFilter} loop>
-              <div className="flex items-center gap-2 border-b border-white/[0.08] px-3">
-                <SearchIcon size={13} className="shrink-0 text-zinc-600" />
-                <CommandInput
-                  placeholder="搜索 provider…"
-                  autoFocus
-                  className="w-full bg-transparent py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
-                />
-              </div>
-              <CommandList className="scroll-thin max-h-64 overflow-y-auto p-1">
-                <CommandEmpty className="mono-label px-3 py-5 text-center text-zinc-600">no match</CommandEmpty>
+      {open && (
+        <motion.div
+          {...popoverAnim}
+          className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-md border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black"
+        >
+          <Command shouldFilter filter={providerFilter} loop>
+            <div className="flex items-center gap-2 border-b border-white/[0.08] px-3">
+              <Search size={13} className="shrink-0 text-zinc-600" />
+              <CommandInput
+                placeholder="搜索 provider…"
+                autoFocus
+                className="w-full bg-transparent py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+              />
+            </div>
+            <CommandList className="scroll-thin max-h-64 overflow-y-auto p-1">
+              <CommandEmpty className="mono-label px-3 py-5 text-center text-zinc-600">no match</CommandEmpty>
+              <CommandGroup
+                heading="常用"
+                className="text-xs text-zinc-500 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-zinc-600"
+              >
+                {builtin.map((p) => (
+                  <ProviderItem key={p.id} preset={p} active={p.id === activeId} onSelect={(id) => { onSelect(id); setOpen(false) }} />
+                ))}
+              </CommandGroup>
+              {catalogStatus === 'loading' && (
+                <div className="mono-label px-3 py-3 text-zinc-600">loading models.dev…</div>
+              )}
+              {catalogStatus === 'ready' && catalog.length > 0 && (
                 <CommandGroup
-                  heading="常用"
+                  heading={`更多 · models.dev (${catalog.length})`}
                   className="text-xs text-zinc-500 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-zinc-600"
                 >
-                  {builtin.map((p) => (
+                  {catalog.map((p) => (
                     <ProviderItem key={p.id} preset={p} active={p.id === activeId} onSelect={(id) => { onSelect(id); setOpen(false) }} />
                   ))}
                 </CommandGroup>
-                {catalogStatus === 'loading' && (
-                  <div className="mono-label px-3 py-3 text-zinc-600">loading models.dev…</div>
-                )}
-                {catalogStatus === 'ready' && catalog.length > 0 && (
-                  <CommandGroup
-                    heading={`更多 · models.dev (${catalog.length})`}
-                    className="text-xs text-zinc-500 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-zinc-600"
-                  >
-                    {catalog.map((p) => (
-                      <ProviderItem key={p.id} preset={p} active={p.id === activeId} onSelect={(id) => { onSelect(id); setOpen(false) }} />
-                    ))}
-                  </CommandGroup>
-                )}
-              </CommandList>
-            </Command>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              )}
+            </CommandList>
+          </Command>
+        </motion.div>
+      )}
     </div>
   )
 }
@@ -231,64 +230,62 @@ function ModelSelect({
           aria-label="展开模型列表"
         >
           {listState.status === 'loading' ? (
-            <RefreshIcon size={13} className="animate-spin" />
+            <RefreshCw size={13} className="animate-spin" />
           ) : (
-            <ChevronDownIcon size={14} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            <ChevronDown size={14} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
           )}
         </button>
       </div>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            {...popoverAnim}
-            className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-md border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black"
-          >
-            {listState.status === 'loading' && (
-              <div className="mono-label flex items-center gap-2 px-3 py-3.5 text-zinc-500">
-                <RefreshIcon size={11} className="animate-spin" />
-                fetching models…
-              </div>
-            )}
-            {listState.status === 'error' && (
-              <div className="px-3 py-3 text-xs leading-relaxed text-red-400">
-                模型列表拉取失败：{listState.error}
-                {!canFetch && <span className="text-zinc-600">（该 provider 不支持自动拉取，可直接输入模型名）</span>}
-              </div>
-            )}
-            {listState.status !== 'loading' && filtered.length > 0 && (
-              <ul className="scroll-thin max-h-60 overflow-y-auto p-1">
-                {filtered.map((m) => (
-                  <li key={m}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onChange(m)
-                        setOpen(false)
-                      }}
-                      className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left font-mono text-xs text-zinc-300 transition-colors hover:bg-[#3d7fff]/15 hover:text-[#5c93ff]"
-                    >
-                      <span className="truncate">{m}</span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {visionModels.includes(m) && (
-                          <span className="mono-label rounded-sm border border-[#3d7fff]/50 px-1.5 py-0.5 text-[#5c93ff]">vision</span>
-                        )}
-                        {m === value && <CheckIcon size={12} className="text-[#3d7fff]" />}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {listState.status === 'ready' && filtered.length === 0 && (
-              <div className="mono-label px-3 py-3.5 text-zinc-600">no match · 直接回车使用当前输入</div>
-            )}
-            {listState.status === 'idle' && !canFetch && (
-              <div className="mono-label px-3 py-3.5 text-zinc-600">该 provider 不支持拉取 · 手动输入模型名</div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {open && (
+        <motion.div
+          {...popoverAnim}
+          className="absolute left-0 right-0 z-30 mt-1.5 overflow-hidden rounded-md border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black"
+        >
+          {listState.status === 'loading' && (
+            <div className="mono-label flex items-center gap-2 px-3 py-3.5 text-zinc-500">
+              <RefreshCw size={11} className="animate-spin" />
+              fetching models…
+            </div>
+          )}
+          {listState.status === 'error' && (
+            <div className="px-3 py-3 text-xs leading-relaxed text-red-400">
+              模型列表拉取失败：{listState.error}
+              {!canFetch && <span className="text-zinc-600">（该 provider 不支持自动拉取，可直接输入模型名）</span>}
+            </div>
+          )}
+          {listState.status !== 'loading' && filtered.length > 0 && (
+            <ul className="scroll-thin max-h-60 overflow-y-auto p-1">
+              {filtered.map((m) => (
+                <li key={m}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(m)
+                      setOpen(false)
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left font-mono text-xs text-zinc-300 transition-colors hover:bg-[#3d7fff]/15 hover:text-[#5c93ff]"
+                  >
+                    <span className="truncate">{m}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {visionModels.includes(m) && (
+                        <span className="mono-label rounded-sm border border-[#3d7fff]/50 px-1.5 py-0.5 text-[#5c93ff]">vision</span>
+                      )}
+                      {m === value && <Check size={12} className="text-[#3d7fff]" />}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {listState.status === 'ready' && filtered.length === 0 && (
+            <div className="mono-label px-3 py-3.5 text-zinc-600">no match · 直接回车使用当前输入</div>
+          )}
+          {listState.status === 'idle' && !canFetch && (
+            <div className="mono-label px-3 py-3.5 text-zinc-600">该 provider 不支持拉取 · 手动输入模型名</div>
+          )}
+        </motion.div>
+      )}
     </div>
   )
 }
@@ -318,15 +315,19 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
   const builtin = useMemo(() => presets.filter((p) => p.source === 'builtin'), [presets])
   const catalog = useMemo(() => presets.filter((p) => p.source === 'catalog'), [presets])
 
-  const active = cfg ?? {
-    id: activeProviderId,
-    kind: preset?.transport ?? 'openai',
-    apiKey: '',
-    baseURL: preset?.defaultBaseURL ?? '',
-    model: preset?.defaultModel ?? '',
-  }
+  // the preset's transport is authoritative — saved configs may carry a stale
+  // kind from before the openai-compatible split
+  const active = cfg
+    ? { ...cfg, kind: preset?.transport ?? cfg.kind }
+    : {
+        id: activeProviderId,
+        kind: preset?.transport ?? 'openai',
+        apiKey: '',
+        baseURL: preset?.defaultBaseURL ?? '',
+        model: preset?.defaultModel ?? '',
+      }
 
-  const canFetchModels = active.kind === 'openai' && (preset?.needsApiKey === false || active.apiKey.trim().length > 0)
+  const canFetchModels = (active.kind === 'openai' || active.kind === 'openai-compatible') && (preset?.needsApiKey === false || active.apiKey.trim().length > 0)
 
   const loadModels = useCallback(async () => {
     const seq = ++fetchSeq.current
@@ -376,181 +377,192 @@ export function ProviderPanel({ onClose }: { onClose: () => void }) {
 
   const visionCount = preset?.visionModels?.length ?? 0
 
-  // Esc closes the innermost open layer first
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== 'Escape') return
-      if (modelOpen) {
-        setModelOpen(false)
-        return
-      }
-      if (providerOpen) {
-        setProviderOpen(false)
-        return
-      }
-      onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, modelOpen, providerOpen])
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 pt-[8vh] backdrop-blur-sm" onClick={onClose}>
-      <motion.form
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-3xl rounded-md border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl shadow-black"
-        onSubmit={(e) => e.preventDefault()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="mono-label flex items-center gap-2 text-zinc-300">
-            <span className="h-1.5 w-1.5 bg-[#3d7fff]" />
-            model / provider://
-          </h2>
-          <button type="button" onClick={onClose} className="btn-ghost rounded-sm p-1.5">
-            <XIcon size={12} />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-5">
-          {/* Provider */}
-          <div className="col-span-2">
-            <label className="mono-label mb-1.5 block text-zinc-500">provider</label>
-            <ProviderSelect
-              builtin={builtin}
-              catalog={catalog}
-              catalogStatus={catalogStatus}
-              activeId={activeProviderId}
-              onSelect={onSelect}
-              open={providerOpen}
-              setOpen={setProviderOpen}
-            />
-            {preset && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className={`mono-label rounded-sm border px-2 py-0.5 ${BADGE_STYLE[preset.badge]}`}>
-                  {BADGE_LABEL[preset.badge]}
-                </span>
-                <span className="font-mono text-[11px] text-zinc-600">{preset.defaultBaseURL || '官方端点'}</span>
-                {!preset.needsApiKey && <span className="mono-label text-zinc-600">· no key needed</span>}
-                {visionCount > 0 && <span className="mono-label text-zinc-600">· {visionCount} vision</span>}
-                {preset.id === 'ollama' && <span className="mono-label text-violet-400">· offline</span>}
-              </div>
-            )}
-          </div>
-
-          {/* API Key */}
-          {preset?.needsApiKey !== false && (
-            <div className="mt-4">
-              <label htmlFor="provider-api-key" className="mono-label mb-1.5 block text-zinc-500">api key</label>
-              <div className="flex gap-2">
-                <input
-                  id="provider-api-key"
-                  name="provider-api-key"
-                  type={showKey ? 'text' : 'password'}
-                  value={active.apiKey}
-                  onChange={(e) => {
-                    updateConfig(activeProviderId, { apiKey: e.target.value })
-                    setTestResult(null)
-                  }}
-                  placeholder="sk-… / Bearer token"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="input-line flex-1 rounded-md border border-white/10 bg-black px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-700"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey((v) => !v)}
-                  className="btn-ghost mono-label shrink-0 rounded-md px-3"
-                >
-                  {showKey ? 'hide' : 'show'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Base URL */}
-          <div className={`mt-4 ${preset?.needsApiKey === false ? 'col-span-2' : ''}`}>
-            <label htmlFor="provider-base-url" className="mono-label mb-1.5 block text-zinc-500">base url</label>
-            <input
-              id="provider-base-url"
-              name="provider-base-url"
-              type="text"
-              value={active.baseURL}
-              onChange={(e) => {
-                updateConfig(activeProviderId, { baseURL: e.target.value })
-                setTestResult(null)
-              }}
-              placeholder={preset?.baseURLPlaceholder ?? '留空使用官方端点'}
-              autoComplete="off"
-              spellCheck={false}
-              className="input-line w-full rounded-md border border-white/10 bg-black px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-700"
-            />
-          </div>
-
-          {/* Model */}
-          <div className="col-span-2 mt-4">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label htmlFor="provider-model" className="mono-label text-zinc-500">model</label>
-              {modelList.status === 'ready' && (
-                <span className="mono-label text-[#5c93ff]">✓ {modelList.models.length} models fetched</span>
-              )}
-            </div>
-            <ModelSelect
-              value={active.model}
-              onChange={(v) => {
-                updateConfig(activeProviderId, { model: v })
-                setTestResult(null)
-              }}
-              listState={modelList}
-              canFetch={canFetchModels}
-              onOpen={onModelOpen}
-              visionModels={preset?.visionModels ?? []}
-              placeholder={preset?.models[0] ?? '模型名'}
-              open={modelOpen}
-              setOpen={setModelOpen}
-            />
-          </div>
-
-          {/* CORS note */}
-          {preset?.corsNote && (
-            <p className="col-span-2 mt-4 rounded-md border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs leading-relaxed text-zinc-500">
-              {preset.corsNote}
-            </p>
-          )}
-
-          {/* Test connection */}
-          <div className="col-span-2 mt-5 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onTest}
-              disabled={testing || !active.model.trim() || (preset?.needsApiKey !== false && !active.apiKey.trim())}
-              className="btn-primary rounded-md px-6 py-2.5 text-xs font-bold tracking-widest"
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay asChild>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+          />
+        </Dialog.Overlay>
+        <Dialog.Content
+          asChild
+          aria-label="模型配置"
+          onEscapeKeyDown={(e) => {
+            // close the innermost open layer first, like the dropdowns expect
+            if (modelOpen) {
+              e.preventDefault()
+              setModelOpen(false)
+            } else if (providerOpen) {
+              e.preventDefault()
+              setProviderOpen(false)
+            }
+          }}
+        >
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[8vh]" onClick={onClose}>
+            <motion.form
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-3xl rounded-md border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl shadow-black"
+              onSubmit={(e) => e.preventDefault()}
+              onClick={(e) => e.stopPropagation()}
             >
-              {testing ? 'TESTING…' : 'TEST CONNECTION'}
-            </button>
-            {testResult && (
-              <motion.p
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                className={`rounded-md border px-3 py-2 font-mono text-xs ${
-                  testResult.ok
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : 'border-red-500/30 bg-red-500/10 text-red-400'
-                }`}
-              >
-                {testResult.ok ? `✓ connected (${testResult.latencyMs}ms)` : `✗ ${testResult.error ?? '连接失败'}`}
-              </motion.p>
-            )}
-          </div>
-        </div>
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="mono-label flex items-center gap-2 text-zinc-300">
+                  <span className="h-1.5 w-1.5 bg-[#3d7fff]" />
+                  model / provider://
+                </h2>
+                <Dialog.Close asChild>
+                  <button type="button" className="btn-ghost rounded-sm p-1.5" aria-label="关闭">
+                    <X size={12} />
+                  </button>
+                </Dialog.Close>
+              </div>
 
-        <p className="mt-5 border-t border-white/[0.06] pt-4 text-xs leading-relaxed text-zinc-600">
-          密钥与配置只保存在本机浏览器 localStorage，不会上传到任何服务器；请求由浏览器直发你填写的端点。
-          provider 列表来自 <span className="text-zinc-500">models.dev</span>（@ai-sdk），大部分走 OpenAI 兼容协议，Anthropic / Gemini 用各自官方 SDK。
-        </p>
-      </motion.form>
-    </div>
+              <div className="grid grid-cols-2 gap-x-5">
+                {/* Provider */}
+                <div className="col-span-2">
+                  <label className="mono-label mb-1.5 block text-zinc-500">provider</label>
+                  <ProviderSelect
+                    builtin={builtin}
+                    catalog={catalog}
+                    catalogStatus={catalogStatus}
+                    activeId={activeProviderId}
+                    onSelect={onSelect}
+                    open={providerOpen}
+                    setOpen={setProviderOpen}
+                  />
+                  {preset && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className={`mono-label rounded-sm border px-2 py-0.5 ${BADGE_STYLE[preset.badge]}`}>
+                        {BADGE_LABEL[preset.badge]}
+                      </span>
+                      <span className="font-mono text-[11px] text-zinc-600">{preset.defaultBaseURL || '官方端点'}</span>
+                      {!preset.needsApiKey && <span className="mono-label text-zinc-600">· no key needed</span>}
+                      {visionCount > 0 && <span className="mono-label text-zinc-600">· {visionCount} vision</span>}
+                      {preset.id === 'ollama' && <span className="mono-label text-violet-400">· offline</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* API Key */}
+                {preset?.needsApiKey !== false && (
+                  <div className="mt-4">
+                    <label htmlFor="provider-api-key" className="mono-label mb-1.5 block text-zinc-500">api key</label>
+                    <div className="flex gap-2">
+                      <input
+                        id="provider-api-key"
+                        name="provider-api-key"
+                        type={showKey ? 'text' : 'password'}
+                        value={active.apiKey}
+                        onChange={(e) => {
+                          updateConfig(activeProviderId, { apiKey: e.target.value })
+                          setTestResult(null)
+                        }}
+                        placeholder="sk-… / Bearer token"
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="input-line flex-1 rounded-md border border-white/10 bg-black px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowKey((v) => !v)}
+                        className="btn-ghost mono-label shrink-0 rounded-md px-3"
+                      >
+                        {showKey ? 'hide' : 'show'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Base URL */}
+                <div className={`mt-4 ${preset?.needsApiKey === false ? 'col-span-2' : ''}`}>
+                  <label htmlFor="provider-base-url" className="mono-label mb-1.5 block text-zinc-500">base url</label>
+                  <input
+                    id="provider-base-url"
+                    name="provider-base-url"
+                    type="text"
+                    value={active.baseURL}
+                    onChange={(e) => {
+                      updateConfig(activeProviderId, { baseURL: e.target.value })
+                      setTestResult(null)
+                    }}
+                    placeholder={preset?.baseURLPlaceholder ?? '留空使用官方端点'}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-line w-full rounded-md border border-white/10 bg-black px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-700"
+                  />
+                </div>
+
+                {/* Model */}
+                <div className="col-span-2 mt-4">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label htmlFor="provider-model" className="mono-label text-zinc-500">model</label>
+                    {modelList.status === 'ready' && (
+                      <span className="mono-label text-[#5c93ff]">✓ {modelList.models.length} models fetched</span>
+                    )}
+                  </div>
+                  <ModelSelect
+                    value={active.model}
+                    onChange={(v) => {
+                      updateConfig(activeProviderId, { model: v })
+                      setTestResult(null)
+                    }}
+                    listState={modelList}
+                    canFetch={canFetchModels}
+                    onOpen={onModelOpen}
+                    visionModels={preset?.visionModels ?? []}
+                    placeholder={preset?.models[0] ?? '模型名'}
+                    open={modelOpen}
+                    setOpen={setModelOpen}
+                  />
+                </div>
+
+                {/* CORS note */}
+                {preset?.corsNote && (
+                  <p className="col-span-2 mt-4 rounded-md border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs leading-relaxed text-zinc-500">
+                    {preset.corsNote}
+                  </p>
+                )}
+
+                {/* Test connection */}
+                <div className="col-span-2 mt-5 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={onTest}
+                    disabled={testing || !active.model.trim() || (preset?.needsApiKey !== false && !active.apiKey.trim())}
+                    className="btn-primary rounded-md px-6 py-2.5 text-xs font-bold tracking-widest"
+                  >
+                    {testing ? 'TESTING…' : 'TEST CONNECTION'}
+                  </button>
+                  {testResult && (
+                    <motion.p
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className={`rounded-md border px-3 py-2 font-mono text-xs ${
+                        testResult.ok
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                          : 'border-red-500/30 bg-red-500/10 text-red-400'
+                      }`}
+                    >
+                      {testResult.ok ? `✓ connected (${testResult.latencyMs}ms)` : `✗ ${testResult.error ?? '连接失败'}`}
+                    </motion.p>
+                  )}
+                </div>
+              </div>
+
+              <p className="mt-5 border-t border-white/[0.06] pt-4 text-xs leading-relaxed text-zinc-600">
+                密钥与配置只保存在本机浏览器 localStorage，不会上传到任何服务器；请求由浏览器直发你填写的端点。
+                provider 列表来自 <span className="text-zinc-500">models.dev</span>（@ai-sdk），大部分走 OpenAI 兼容协议，Anthropic / Gemini 用各自官方 SDK。
+              </p>
+            </motion.form>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

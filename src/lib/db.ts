@@ -1,7 +1,17 @@
 import { clear, createStore, del, get, keys, set } from 'idb-keyval'
-import type { VideoFileInfo } from '../types'
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import type { ExtractedFrame, VideoFileInfo } from '../types'
 
-/** local-first persistence for analysis sessions (IndexedDB). */
+/**
+ * local-first persistence for analysis sessions.
+ *
+ * Two stores:
+ * - `argus/kv` (idb-keyval): session meta, messages, memory entries — small payloads
+ * - `argus-frames` (idb): one record per frame, keyed [sessionId, frameId]
+ *
+ * Frames used to be merge-saved as one giant array; on long analyses that meant
+ * re-serializing tens of MB on every autosave. Per-frame records make saves O(new frames).
+ */
 const kv = createStore('argus', 'kv')
 
 export interface SessionMeta {
@@ -12,6 +22,33 @@ export interface SessionMeta {
   updatedAt: number
   messageCount: number
   videoInfo?: VideoFileInfo
+}
+
+interface FramesDB extends DBSchema {
+  frames: {
+    key: [sessionId: string, frameId: string]
+    value: ExtractedFrame & { sessionId: string }
+    indexes: { 'by-session': string }
+  }
+}
+
+const framesDbPromise: Promise<IDBPDatabase<FramesDB>> = openDB<FramesDB>('argus-frames', 1, {
+  upgrade(db) {
+    const store = db.createObjectStore('frames', { keyPath: ['sessionId', 'id'] })
+    store.createIndex('by-session', 'sessionId')
+  },
+})
+
+/** frame ids already persisted per session — keeps autosave incremental */
+const savedFrameIds = new Map<string, Set<string>>()
+
+function savedIds(sessionId: string): Set<string> {
+  let s = savedFrameIds.get(sessionId)
+  if (!s) {
+    s = new Set<string>()
+    savedFrameIds.set(sessionId, s)
+  }
+  return s
 }
 
 const K = {
@@ -45,23 +82,49 @@ export async function loadMessages<T>(id: string): Promise<T | undefined> {
   return (await get(K.messages(id), kv)) as T | undefined
 }
 
-/** merge-write: new frames are unioned with what's already persisted (by id). */
-export async function mergeSaveFrames<T extends { id: string }>(id: string, frames: T[]): Promise<void> {
+/** persist only frames that were not saved yet for this session */
+export async function mergeSaveFrames(sessionId: string, frames: ExtractedFrame[]): Promise<void> {
   if (frames.length === 0) return
-  const existing = ((await get(K.frames(id), kv)) as T[] | undefined) ?? []
-  const map = new Map<string, T>()
-  for (const f of existing) map.set(f.id, f)
-  for (const f of frames) map.set(f.id, f)
-  await set(K.frames(id), [...map.values()], kv)
+  const saved = savedIds(sessionId)
+  const fresh = frames.filter((f) => !saved.has(f.id))
+  if (fresh.length === 0) return
+  const db = await framesDbPromise
+  const tx = db.transaction('frames', 'readwrite')
+  await Promise.all([...fresh.map((f) => tx.store.put({ ...f, sessionId })), tx.done])
+  for (const f of fresh) saved.add(f.id)
 }
 
-export async function loadFrames<T>(id: string): Promise<T[] | undefined> {
-  return (await get(K.frames(id), kv)) as T[] | undefined
+/** one-time migration: legacy sessions stored frames as a single array in kv */
+async function backfillLegacyFrames(sessionId: string): Promise<ExtractedFrame[]> {
+  const legacy = (await get(K.frames(sessionId), kv)) as ExtractedFrame[] | undefined
+  if (!legacy || legacy.length === 0) return []
+  const db = await framesDbPromise
+  const tx = db.transaction('frames', 'readwrite')
+  await Promise.all([...legacy.map((f) => tx.store.put({ ...f, sessionId })), tx.done])
+  const saved = savedIds(sessionId)
+  for (const f of legacy) saved.add(f.id)
+  await del(K.frames(sessionId), kv)
+  return legacy
 }
 
-export async function loadFrameById<T extends { id: string }>(id: string, frameId: string): Promise<T | undefined> {
-  const frames = ((await loadFrames<T>(id)) ?? []) as T[]
-  return frames.find((f) => f.id === frameId)
+export async function loadFrames(sessionId: string): Promise<ExtractedFrame[]> {
+  const db = await framesDbPromise
+  const list = await db.getAllFromIndex('frames', 'by-session', sessionId)
+  if (list.length > 0) {
+    const saved = savedIds(sessionId)
+    for (const f of list) saved.add(f.id)
+    return list
+  }
+  return backfillLegacyFrames(sessionId)
+}
+
+export async function loadFrameById(sessionId: string, frameId: string): Promise<ExtractedFrame | undefined> {
+  const db = await framesDbPromise
+  const direct = await db.get('frames', [sessionId, frameId])
+  if (direct) return direct
+  // may still live in the legacy array store (or not exist at all)
+  const all = await loadFrames(sessionId)
+  return all.find((f) => f.id === frameId)
 }
 
 export async function saveMemoryEntries<T>(id: string, entries: T): Promise<void> {
@@ -73,9 +136,17 @@ export async function loadMemoryEntries<T>(id: string): Promise<T[] | undefined>
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  const db = await framesDbPromise
+  const tx = db.transaction('frames', 'readwrite')
+  const frameKeys = await tx.store.index('by-session').getAllKeys(id)
+  await Promise.all([...frameKeys.map((k) => tx.store.delete(k)), tx.done])
+  savedFrameIds.delete(id)
   await Promise.all([del(K.meta(id), kv), del(K.messages(id), kv), del(K.frames(id), kv), del(K.memory(id), kv)])
 }
 
 export async function clearAllSessions(): Promise<void> {
+  const db = await framesDbPromise
+  await db.clear('frames')
+  savedFrameIds.clear()
   await clear(kv)
 }

@@ -7,7 +7,8 @@ import { HistoryPanel } from './components/HistoryPanel'
 import { VideoPanel } from './components/VideoPanel'
 import { FrameGrid } from './components/FrameGrid'
 import { ChatPanel } from './components/ChatPanel'
-import { EyeIcon, GearIcon, HistoryIcon } from './components/icons'
+import { History, Settings } from 'lucide-react'
+import { EyeIcon } from './components/icons'
 
 export default function App() {
   const [showProvider, setShowProvider] = useState(false)
@@ -68,14 +69,14 @@ export default function App() {
             className="btn-ghost flex items-center gap-2 rounded-md px-3 py-2 text-xs"
             title="历史记录（本地持久化）"
           >
-            <HistoryIcon size={14} />
+            <History size={14} />
             <span className="mono-label hidden sm:inline">history</span>
           </button>
           <button
             onClick={() => setShowProvider(true)}
             className="btn-primary flex items-center gap-2 rounded-md px-4 py-2 text-xs font-bold"
           >
-            <GearIcon size={14} />
+            <Settings size={14} />
             <span>{providerName}</span>
             {catalogStatus === 'loading' && <span className="opacity-60">· …</span>}
             <span className="hidden opacity-60 sm:inline">{hasVideo ? '· video loaded' : '· no video'}</span>

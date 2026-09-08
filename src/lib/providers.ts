@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogle } from '@ai-sdk/google'
 import { generateText } from 'ai'
@@ -60,7 +61,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'openrouter', name: 'OpenRouter', transport: 'openai',
+    id: 'openrouter', name: 'OpenRouter', transport: 'openai-compatible',
     defaultModel: 'openai/gpt-4o', defaultBaseURL: 'https://openrouter.ai/api/v1', baseURLPlaceholder: 'https://openrouter.ai/api/v1',
     models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat'],
     visionModels: ['openai/gpt-4o', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash'],
@@ -68,7 +69,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'deepseek', name: 'DeepSeek', transport: 'openai',
+    id: 'deepseek', name: 'DeepSeek', transport: 'openai-compatible',
     defaultModel: 'deepseek-v4-flash-vision-exp', defaultBaseURL: 'https://api.deepseek.com', baseURLPlaceholder: 'https://api.deepseek.com',
     models: ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-v4-pro'],
     visionModels: ['deepseek-v4-flash-vision-exp'],
@@ -76,14 +77,14 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'moonshot', name: '月之暗面 Kimi', transport: 'openai',
+    id: 'moonshot', name: '月之暗面 Kimi', transport: 'openai-compatible',
     defaultModel: 'moonshot-v1-8k', defaultBaseURL: 'https://api.moonshot.cn/v1', baseURLPlaceholder: 'https://api.moonshot.cn/v1',
     models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-latest'],
     corsNote: '浏览器直连友好。kimi-latest / 视觉模型适合后续；当前模型偏文本。',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'zhipu', name: '智谱 GLM', transport: 'openai',
+    id: 'zhipu', name: '智谱 GLM', transport: 'openai-compatible',
     defaultModel: 'glm-4-v-plus', defaultBaseURL: 'https://open.bigmodel.cn/api/paas/v4', baseURLPlaceholder: 'https://open.bigmodel.cn/api/paas/v4',
     models: ['glm-4-v-plus', 'glm-4-plus', 'glm-4-flash'],
     visionModels: ['glm-4-v-plus'],
@@ -91,7 +92,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'qwen', name: '阿里百炼 Qwen', transport: 'openai',
+    id: 'qwen', name: '阿里百炼 Qwen', transport: 'openai-compatible',
     defaultModel: 'qwen-vl-max', defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', baseURLPlaceholder: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: ['qwen-vl-max', 'qwen-vl-plus', 'qwen-plus', 'qwen-max'],
     visionModels: ['qwen-vl-max', 'qwen-vl-plus'],
@@ -99,7 +100,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
-    id: 'ollama', name: 'Ollama（本地）', transport: 'openai',
+    id: 'ollama', name: 'Ollama（本地）', transport: 'openai-compatible',
     defaultModel: 'qwen2.5-vl', defaultBaseURL: 'http://localhost:11434/v1', baseURLPlaceholder: 'http://localhost:11434/v1',
     models: ['qwen2.5-vl', 'llama3.2', 'llama3.1', 'gemma3'],
     visionModels: ['qwen2.5-vl'],
@@ -125,6 +126,16 @@ export function buildModel(cfg: ProviderConfig): LanguageModel {
         baseURL: baseURL || undefined,
       })
       return provider.chat(cfg.model.trim())
+    }
+    case 'openai-compatible': {
+      const baseURL = cfg.baseURL.trim()
+      if (!baseURL) throw new Error('该 provider 需要填写 Base URL 才能请求')
+      const provider = createOpenAICompatible({
+        name: cfg.id,
+        baseURL,
+        apiKey: cfg.apiKey.trim() || undefined,
+      })
+      return provider.chatModel(cfg.model.trim())
     }
     case 'openai':
     default: {
@@ -153,8 +164,8 @@ export function resolveProviderConfig(
   id: string,
 ): ProviderConfig {
   const saved = configs[id]
-  if (saved) return { id, kind: saved.kind, apiKey: saved.apiKey, baseURL: saved.baseURL, model: saved.model }
   const preset = presets.find((p) => p.id === id)
+  if (saved) return { id, kind: preset?.transport ?? saved.kind, apiKey: saved.apiKey, baseURL: saved.baseURL, model: saved.model }
   if (preset) return { id, kind: preset.transport, apiKey: '', baseURL: preset.defaultBaseURL, model: preset.defaultModel }
   return { id, kind: 'openai', apiKey: '', baseURL: '', model: '' }
 }
@@ -195,7 +206,7 @@ export interface FetchModelsResult {
  * Only meaningful for the 'openai' transport; other SDKs have no such REST shape.
  */
 export async function fetchModels(cfg: ProviderConfig, presetBaseURL?: string): Promise<FetchModelsResult> {
-  if (cfg.kind !== 'openai') return { ok: false, error: '该 provider 类型不支持拉取模型列表' }
+  if (cfg.kind !== 'openai' && cfg.kind !== 'openai-compatible') return { ok: false, error: '该 provider 类型不支持拉取模型列表' }
   const root = (cfg.baseURL.trim() || presetBaseURL || '').replace(/\/+$/, '')
   if (!root) return { ok: false, error: '请先填写 Base URL' }
   try {

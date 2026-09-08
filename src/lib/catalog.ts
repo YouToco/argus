@@ -49,7 +49,7 @@ function isLocalhost(url: string): boolean {
 function transportFromNpm(npm: string | undefined): ProviderPreset['transport'] {
   if (npm === '@ai-sdk/anthropic') return 'anthropic'
   if (npm === '@ai-sdk/google' || npm === '@google/genai') return 'google'
-  return 'openai'
+  return 'openai-compatible'
 }
 
 function isChatModel(m: { id?: string; name?: string; modalities?: { output?: string[] } }): boolean {

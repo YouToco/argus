@@ -3,7 +3,7 @@ import { useAppStore } from '../store'
 import { VideoSession } from '../lib/video/session'
 import { memory } from '../lib/agent/memory'
 import { formatBitrate, formatBytes, formatDuration, formatFps } from '../lib/format'
-import { FilmIcon } from './icons'
+import { Film } from 'lucide-react'
 import { startSession } from '../lib/persistence'
 import type { VideoFileInfo } from '../types'
 
@@ -94,7 +94,7 @@ export function VideoPanel() {
             <span className="mono-label absolute bottom-1.5 left-2 text-zinc-700">+</span>
             <span className="mono-label absolute bottom-1.5 right-2 text-zinc-700">+</span>
 
-            <FilmIcon size={videoInfo ? 24 : 32} className="text-zinc-300 transition-transform duration-200 group-hover:scale-110" />
+            <Film size={videoInfo ? 24 : 32} className="text-zinc-300 transition-transform duration-200 group-hover:scale-110" />
             <div className="space-y-1.5">
               <span className="block text-sm font-bold tracking-tight text-white">
                 {loading ? '正在加载…' : videoInfo ? '重新加载视频文件以继续分析' : '点击或拖入本地视频'}
