@@ -23,7 +23,7 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 
 ## 特性
 
-- **纯前端、零后端**：视频经本地 Object URL 加载，帧提取走原生 `<video>` + `<canvas>` 硬件解码，不依赖 FFmpeg/WASM 重编码，文件从不上传。
+- **纯前端、零后端**：视频经本地 Object URL 加载，文件从不上传。MP4 / MOV / MKV / WebM 走 mediabunny（WebCodecs 硬解顺序抽帧）；AVI / WMV / FLV / TS 等浏览器解不了的格式，首次拖入时按需懒加载 ffmpeg.wasm（约 32MB，从 unpkg/jsdelivr 直取，不入本仓库）在浏览器内转码为 H.264 MP4 后进入同一管线——用户无需安装任何东西。
 - **BYOK 多 provider**：基于 [Vercel AI SDK](https://ai-sdk.dev)，一套代码支持 OpenAI 兼容端点（OpenRouter / DeepSeek / Kimi / 智谱 / Ollama …）、Anthropic、Gemini；填完 API Key **自动拉取端点模型列表**，下拉即选。
 - **专业 Agent 工作流**：粗扫 → 锁定区间 → 加密细看 → 放大确认的分层策略；`remember/recall` 状态记忆防长上下文遗忘；`spawn_subagent` 把长片段派给子代理并行细看。
 - **过程可视化**：回答上方是可折叠的工作过程区——每个工具调用的参数摘要、结果、状态一目了然，子代理步骤嵌套展示；回答用 Markdown 渲染。
@@ -65,7 +65,7 @@ npm run build      # 类型检查 + 生产构建（产物在 dist/）
 
 ```
 用户需求 → 主 Agent（系统提示 + 工具集）
-  ├─ get_video_info    容器/编码/时长/分辨率/帧率（mediainfo.js 懒加载）
+  ├─ get_video_info    容器/编码/时长/分辨率/帧率（mediabunny 原生读取，兜底 mediainfo.js WASM）
   ├─ extract_frames    按【时间范围 + 间隔】批量抽帧（精度/数量可控）
   ├─ extract_frame_at  抽指定瞬间单帧
   ├─ list_frames       列出已抽帧及 id

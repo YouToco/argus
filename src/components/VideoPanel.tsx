@@ -5,6 +5,7 @@ import { memory } from '../lib/agent/memory'
 import { formatBitrate, formatBytes, formatDuration, formatFps } from '../lib/format'
 import { Film } from 'lucide-react'
 import { startSession } from '../lib/persistence'
+import { likelyNeedsTranscode, transcodeToMp4 } from '../lib/video/transcode'
 import type { VideoFileInfo } from '../types'
 
 export function VideoPanel() {
@@ -17,18 +18,45 @@ export function VideoPanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadNote, setLoadNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  async function loadFile(file: File) {
+  async function loadFile(origFile: File) {
     setError(null)
     setLoading(true)
+    setLoadNote(null)
     // 同名同大小 = 历史会话重新挂载：保留对话/记忆/帧，兑现 "reload to continue"
+    // 转码格式（AVI 等）转码后体积会变，仅按文件名匹配 reattach
     const st = useAppStore.getState()
+    const sameName = st.videoInfo && st.videoInfo.name === origFile.name
+    const sizeMatch = sameName && st.videoInfo!.sizeBytes === origFile.size
     const reattach = Boolean(
-      st.activeSessionId && st.videoInfo && st.videoInfo.name === file.name && st.videoInfo.sizeBytes === file.size,
+      st.activeSessionId && sameName && (sizeMatch || likelyNeedsTranscode(origFile.name)),
     )
+    let file = origFile
     try {
-      const s = await VideoSession.create(file)
+      let s: VideoSession
+      try {
+        // 已知浏览器解不了的容器直接进转码，跳过注定失败的探测
+        if (likelyNeedsTranscode(origFile.name)) throw new Error('browser-unsupported container')
+        s = await VideoSession.create(origFile)
+      } catch {
+        try {
+          file = await transcodeToMp4(origFile, (p) => {
+            setLoadNote(
+              p.phase === 'downloading'
+                ? '正在下载内置转码器（ffmpeg.wasm，约 11MB，仅首次）…'
+                : `正在浏览器本地转码为 MP4… ${Math.round(p.ratio * 100)}%（不上传）`,
+            )
+          })
+        } catch (e2) {
+          throw new Error(
+            `浏览器无法直接解码该格式，内置转码也失败：${(e2 as Error)?.message ?? String(e2)}`,
+          )
+        }
+        setLoadNote('转码完成，正在加载…')
+        s = await VideoSession.create(file)
+      }
       setSession(s)
       setVideoInfo(s.basicInfo())
       if (!reattach) {
@@ -45,6 +73,7 @@ export function VideoPanel() {
       setError((e as Error)?.message ?? '视频加载失败')
     } finally {
       setLoading(false)
+      setLoadNote(null)
     }
   }
 
@@ -52,7 +81,9 @@ export function VideoPanel() {
     e.preventDefault()
     setDragging(false)
     const f = e.dataTransfer.files?.[0]
-    if (f && f.type.startsWith('video/')) loadFile(f)
+    const isVideo =
+      f && (f.type.startsWith('video/') || /\.(mp4|webm|mkv|mov|m4v|avi|wmv|flv|asf|ts|m2ts|mpg|mpeg|vob|3gp|rm|rmvb)$/i.test(f.name))
+    if (f && isVideo) loadFile(f)
     else setError('请拖入视频文件')
   }
 
@@ -97,7 +128,7 @@ export function VideoPanel() {
             <Film size={videoInfo ? 24 : 32} className="text-zinc-300 transition-transform duration-200 group-hover:scale-110" />
             <div className="space-y-1.5">
               <span className="block text-sm font-bold tracking-tight text-white">
-                {loading ? '正在加载…' : videoInfo ? '重新加载视频文件以继续分析' : '点击或拖入本地视频'}
+                {loading ? (loadNote ?? '正在加载…') : videoInfo ? '重新加载视频文件以继续分析' : '点击或拖入本地视频（支持 MP4 / MKV / WebM / AVI 等）'}
               </span>
               <span className="mono-label block text-zinc-600">local only · never uploaded</span>
             </div>
@@ -117,7 +148,7 @@ export function VideoPanel() {
       <input
         ref={inputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,.mkv,.avi,.wmv,.flv,.asf,.ts,.m2ts,.mpg,.mpeg,.vob,.3gp,.rm,.rmvb"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
