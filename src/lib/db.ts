@@ -1,6 +1,7 @@
 import { clear, createStore, del, get, keys, set } from 'idb-keyval'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { ExtractedFrame, VideoFileInfo } from '../types'
+import { dataUrlToBlob } from './frames'
 
 /**
  * local-first persistence for analysis sessions.
@@ -27,7 +28,8 @@ export interface SessionMeta {
 interface FramesDB extends DBSchema {
   frames: {
     key: [sessionId: string, frameId: string]
-    value: ExtractedFrame & { sessionId: string }
+    /** dataUrl only exists on pre-Blob legacy records (migrated on read) */
+    value: ExtractedFrame & { sessionId: string; dataUrl?: string }
     indexes: { 'by-session': string }
   }
 }
@@ -104,7 +106,38 @@ async function backfillLegacyFrames(sessionId: string): Promise<ExtractedFrame[]
   const saved = savedIds(sessionId)
   for (const f of legacy) saved.add(f.id)
   await del(K.frames(sessionId), kv)
-  return legacy
+  return migrateLegacyDataUrls(sessionId, legacy as Array<ExtractedFrame & { sessionId: string; dataUrl?: string }>)
+}
+
+/** pre-Blob records stored the frame as a base64 dataUrl — upgrade in place */
+async function migrateLegacyDataUrls(
+  sessionId: string,
+  list: Array<ExtractedFrame & { sessionId: string; dataUrl?: string }>,
+): Promise<ExtractedFrame[]> {
+  const legacy = list.filter((f) => !(f.blob instanceof Blob) && typeof f.dataUrl === 'string')
+  const out = list.map((f) => {
+    if (f.blob instanceof Blob) return f
+    const blob = dataUrlToBlob(f.dataUrl as string)
+    const nf: ExtractedFrame & { sessionId: string } = {
+      id: f.id,
+      timeSec: f.timeSec,
+      blob,
+      width: f.width,
+      height: f.height,
+      source: f.source,
+      sessionId,
+    }
+    return nf
+  })
+  if (legacy.length > 0) {
+    const db = await framesDbPromise
+    const tx = db.transaction('frames', 'readwrite')
+    await Promise.all([
+      ...out.filter((f) => legacy.some((l) => l.id === f.id)).map((f) => tx.store.put(f)),
+      tx.done,
+    ])
+  }
+  return out
 }
 
 export async function loadFrames(sessionId: string): Promise<ExtractedFrame[]> {
@@ -113,7 +146,7 @@ export async function loadFrames(sessionId: string): Promise<ExtractedFrame[]> {
   if (list.length > 0) {
     const saved = savedIds(sessionId)
     for (const f of list) saved.add(f.id)
-    return list
+    return migrateLegacyDataUrls(sessionId, list)
   }
   return backfillLegacyFrames(sessionId)
 }
@@ -121,7 +154,10 @@ export async function loadFrames(sessionId: string): Promise<ExtractedFrame[]> {
 export async function loadFrameById(sessionId: string, frameId: string): Promise<ExtractedFrame | undefined> {
   const db = await framesDbPromise
   const direct = await db.get('frames', [sessionId, frameId])
-  if (direct) return direct
+  if (direct) {
+    const [migrated] = await migrateLegacyDataUrls(sessionId, [direct])
+    return migrated
+  }
   // may still live in the legacy array store (or not exist at all)
   const all = await loadFrames(sessionId)
   return all.find((f) => f.id === frameId)

@@ -1,6 +1,7 @@
 import * as z from 'zod'
 import type { ExtractedFrame } from '../../types'
 import { cropRegion } from '../video/inspect'
+import { frameDataUrl, frameObjectUrl } from '../frames'
 import type { VideoSession } from '../video/session'
 import type { MemoryStore } from './memory'
 
@@ -91,7 +92,7 @@ export function buildToolRegistry(): ArgusTool[] {
           .join('\n')
         return {
           text: `已抽取 ${frames.length} 帧：\n${list}`,
-          images: frames.map((f) => ({ dataUrl: f.dataUrl, label: fmt(f.timeSec) })),
+          images: await Promise.all(frames.map(async (f) => ({ dataUrl: await frameDataUrl(f), label: fmt(f.timeSec) }))),
         }
       },
     },
@@ -108,7 +109,7 @@ export function buildToolRegistry(): ArgusTool[] {
         ctx.addFrames([{ ...f, source: 'extract_frame_at' }])
         return {
           text: `已抽取 ${fmt(f.timeSec)} 的一帧（${f.width}×${f.height}）。`,
-          images: [{ dataUrl: f.dataUrl, label: fmt(f.timeSec) }],
+          images: [{ dataUrl: await frameDataUrl(f), label: fmt(f.timeSec) }],
         }
       },
     },
@@ -151,7 +152,7 @@ export function buildToolRegistry(): ArgusTool[] {
           return { text: `找不到帧 "${input.frame_id}"，请先用 list_frames 查看已抽取的帧。` }
         }
         const res = await cropRegion(
-          frame.dataUrl,
+          frameObjectUrl(frame),
           { x: input.x, y: input.y, width: input.width, height: input.height },
           input.scale ?? 2,
         )

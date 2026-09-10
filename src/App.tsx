@@ -9,6 +9,7 @@ import { FrameGrid } from './components/FrameGrid'
 import { ChatPanel } from './components/ChatPanel'
 import { History, Settings } from 'lucide-react'
 import { EyeIcon } from './components/icons'
+import { useT } from './lib/i18n'
 
 export default function App() {
   const [showProvider, setShowProvider] = useState(false)
@@ -19,6 +20,9 @@ export default function App() {
   const hasVideo = useAppStore((s) => !!s.session)
   const catalogStatus = useAppStore((s) => s.catalogStatus)
   const setCatalogStatus = useAppStore((s) => s.setCatalogStatus)
+  const lang = useAppStore((s) => s.lang)
+  const setLang = useAppStore((s) => s.setLang)
+  const t = useT()
 
   useEffect(() => {
     setCatalogStatus('loading')
@@ -50,7 +54,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-extrabold tracking-tighter text-white">Argus</h1>
               <span className="mono-label rounded-sm border border-white/15 px-2 py-0.5 text-zinc-400">
-                长视频理解
+                {t('app.tagline')}
               </span>
             </div>
             <p className="mono-label mt-0.5 text-zinc-600">frontend-local · multi-provider agent harness</p>
@@ -65,9 +69,16 @@ export default function App() {
             </span>
           )}
           <button
+            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            className="btn-ghost mono-label flex items-center rounded-md px-3 py-2"
+            title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+          >
+            {lang === 'zh' ? 'EN' : '中'}
+          </button>
+          <button
             onClick={() => setShowHistory(true)}
             className="btn-ghost flex items-center gap-2 rounded-md px-3 py-2 text-xs"
-            title="历史记录（本地持久化）"
+            title={t('app.historyTip')}
           >
             <History size={14} />
             <span className="mono-label hidden sm:inline">history</span>

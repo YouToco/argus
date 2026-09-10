@@ -1,14 +1,17 @@
 import { useAppStore } from '../store'
 import { formatTime } from '../lib/format'
+import { frameObjectUrl } from '../lib/frames'
+import { useT } from '../lib/i18n'
 
 export function FrameGrid() {
   const frames = useAppStore((s) => s.frames)
+  const t = useT()
 
   if (frames.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 px-1 py-10 text-center">
         <span className="mono-label text-zinc-700">frames://</span>
-        <p className="text-xs text-zinc-600">抽帧结果会显示在这里</p>
+        <p className="text-xs text-zinc-600">{t('frames.empty')}</p>
         <p className="mono-label text-zinc-700">agent captures appear here</p>
       </div>
     )
@@ -24,7 +27,7 @@ export function FrameGrid() {
         >
           <div className="overflow-hidden">
             <img
-              src={f.dataUrl}
+              src={frameObjectUrl(f)}
               alt={`frame @ ${formatTime(f.timeSec)}`}
               className="w-full transition duration-300 group-hover:scale-[1.04]"
               loading="lazy"

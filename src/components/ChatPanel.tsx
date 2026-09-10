@@ -10,8 +10,10 @@ import type { AgentContext } from '../lib/agent/tools'
 import type { ChatMessage, ExtractedFrame, ToolActivity } from '../types'
 import { formatTime } from '../lib/format'
 import { loadFrameById } from '../lib/db'
+import { frameObjectUrl } from '../lib/frames'
 import { EyeIcon } from './icons'
 import { Markdown } from './Markdown'
+import { useT } from '../lib/i18n'
 
 let msgSeq = 0
 function nextId(): string {
@@ -27,6 +29,7 @@ export function ChatPanel() {
   const session = useAppStore((s) => s.session)
   const videoInfo = useAppStore((s) => s.videoInfo)
   const setRunning = useAppStore((s) => s.setRunning)
+  const t = useT()
 
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -44,15 +47,15 @@ export function ChatPanel() {
     const cfg = getActiveProvider()
     const preset = useAppStore.getState().presets.find((p) => p.id === cfg.id)
     if (preset?.needsApiKey !== false && !cfg.apiKey.trim()) {
-      setError('请先点击右上角「模型配置」填写 API Key')
+      setError(t('chat.needApiKey'))
       return
     }
     if (!cfg.model.trim()) {
-      setError('请填写模型名称')
+      setError(t('chat.needModel'))
       return
     }
     if (!session) {
-      setError('请先在左侧加载一个视频文件')
+      setError(t('chat.needVideo'))
       return
     }
     setError(null)
@@ -75,7 +78,7 @@ export function ChatPanel() {
       useAppStore.getState().updateMessage(asstMsg.id, {
         pending: false,
         error: true,
-        content: `模型初始化失败：${(e as Error)?.message ?? String(e)}`,
+        content: t('chat.modelInitFailed', { msg: (e as Error)?.message ?? String(e) }),
       })
       return
     }
@@ -106,12 +109,11 @@ export function ChatPanel() {
     } catch (e) {
       const isAbort = (e as Error)?.name === 'AbortError' || (e as DOMException)?.name === 'AbortError'
       if (isAbort) {
-        useAppStore.getState().appendToMessage(asstMsg.id, '\n\n（已停止）')
+        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.stopped')}`)
       } else {
         useAppStore.getState().updateMessage(asstMsg.id, { error: true })
-        const hint =
-          '若为 CORS / fetch 错误，通常是该端点不允许浏览器直连；请检查 baseURL 或改用支持浏览器直连的端点（见右上角配置说明）。'
-        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n❌ 出错：${(e as Error)?.message ?? String(e)}\n${hint}`)
+        const msg = (e as Error)?.message ?? String(e)
+        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}\n${t('chat.corsHint')}`)
       }
     } finally {
       const st = useAppStore.getState()
@@ -152,7 +154,7 @@ export function ChatPanel() {
             type="button"
             onClick={() => void scrollToBottom()}
             className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-white/10 bg-[#0a0a0a]/90 text-zinc-300 shadow-lg shadow-black backdrop-blur-sm transition-colors hover:border-[#3d7fff]/60 hover:text-[#5c93ff]"
-            aria-label="回到底部"
+            aria-label={t('chat.backToBottom')}
           >
             <ChevronDown size={15} />
           </button>
@@ -173,11 +175,11 @@ export function ChatPanel() {
             <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
             {lastActivity ? (
               <span className="font-mono text-[11px] text-zinc-400">
-                calling <span className="text-[#5c93ff]">{lastActivity.toolName}</span>
-                {lastActivity.depth > 0 ? ' · subagent' : ''}
+                {t('chat.calling')} <span className="text-[#5c93ff]">{lastActivity.toolName}</span>
+                {lastActivity.depth > 0 ? t('chat.subagentSuffix') : ''}
               </span>
             ) : (
-              <span className="mono-label text-zinc-500">thinking…</span>
+              <span className="mono-label text-zinc-500">{t('chat.thinking')}</span>
             )}
             <button onClick={stop} className="btn-ghost mono-label ml-auto flex items-center gap-1.5 rounded-sm px-2.5 py-1">
               <Square size={9} fill="currentColor" strokeWidth={0} />
@@ -201,7 +203,7 @@ export function ChatPanel() {
               }
             }}
             rows={2}
-            placeholder="描述你要分析的需求，例如：数一下这段监控视频里一共有几个人 / 找出画面里的红色物品…"
+            placeholder={t('chat.placeholder')}
             className="input-line scroll-thin flex-1 resize-none rounded-md border border-white/10 bg-black/60 px-3.5 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           <button
@@ -216,10 +218,10 @@ export function ChatPanel() {
             {running ? (
               <>
                 <Square size={9} fill="currentColor" strokeWidth={0} />
-                停止
+                {t('chat.stop')}
               </>
             ) : (
-              '发送'
+              t('chat.send')
             )}
           </button>
         </div>
@@ -229,6 +231,7 @@ export function ChatPanel() {
 }
 
 function EmptyState() {
+  const t = useT()
   return (
     <div className="fade-in flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       <p className="mono-label text-[#5c93ff]">long-video understanding · agent harness</p>
@@ -239,7 +242,7 @@ function EmptyState() {
         </h2>
       </div>
       <p className="max-w-md text-sm leading-relaxed text-zinc-500">
-        加载视频后，用一句话描述需求。agent 会自动了解视频信息、按需抽帧观察、记录状态，必要时派子代理细看长片段、放大确认细节。
+        {t('chat.emptyDesc')}
       </p>
       <p className="mono-label text-zinc-700">drop a video on the left to begin</p>
     </div>
@@ -281,6 +284,7 @@ function brief(input: unknown): string {
 }
 
 function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: boolean }) {
+  const t = useT()
   const [open, setOpen] = useState(live)
   const items = useMemo(() => dedupeActivities(activities), [activities])
   const mainCount = items.filter((a) => a.depth === 0).length
@@ -304,9 +308,9 @@ function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: 
           <Check size={11} className="shrink-0 text-emerald-400" />
         )}
         <span className="mono-label text-zinc-400">
-          {live ? `working · ${mainCount} steps` : `process · ${mainCount} steps`}
-          {subCount > 0 ? ` · ${subCount} subagent` : ''}
-          {live && runningCount > 0 ? ` · ${runningCount} running` : ''}
+          {live ? t('process.working', { n: mainCount }) : t('process.done', { n: mainCount })}
+          {subCount > 0 ? t('process.subagents', { n: subCount }) : ''}
+          {live && runningCount > 0 ? t('process.running', { n: runningCount }) : ''}
         </span>
         <ChevronDown
           size={12}
@@ -327,7 +331,7 @@ function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: 
               {items.map((a) => (
                 <ProcessItem key={a.id} activity={a} />
               ))}
-              {items.length === 0 && <li className="mono-label px-3 py-2 text-zinc-600">waiting…</li>}
+              {items.length === 0 && <li className="mono-label px-3 py-2 text-zinc-600">{t('process.waiting')}</li>}
             </ul>
           </motion.div>
         )}
@@ -422,15 +426,16 @@ function Message({
   running,
 }: {
   message: ChatMessage
-  frames: { id: string; dataUrl: string; timeSec: number; width: number; height: number }[]
+  frames: ExtractedFrame[]
   liveActivities?: ToolActivity[]
   running: boolean
 }) {
+  const t = useT()
   const isUser = message.role === 'user'
   useLazyFrames(message.frameIds, isUser)
   const frameObjs = (message.frameIds ?? [])
     .map((id) => frames.find((f) => f.id === id))
-    .filter(Boolean) as { id: string; dataUrl: string; timeSec: number; width: number; height: number }[]
+    .filter((f): f is ExtractedFrame => Boolean(f))
 
   if (isUser) {
     return (
@@ -454,19 +459,19 @@ function Message({
         ) : (
           message.pending && (
             <span className="mono-label flex items-center gap-2 text-zinc-600">
-              thinking
+              {t('chat.thinkingInline')}
               <span className="caret" />
             </span>
           )
         )}
-        {message.error && <span className="ml-2 text-xs text-red-400">（出错）</span>}
+        {message.error && <span className="ml-2 text-xs text-red-400">{t('chat.errorMark')}</span>}
       </div>
 
       {frameObjs.length > 0 && (
         <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
           {frameObjs.map((f) => (
             <figure key={f.id} className="shrink-0 overflow-hidden rounded-md border border-white/[0.08] transition-colors hover:border-[#3d7fff]/60">
-              <img src={f.dataUrl} alt={`frame @ ${formatTime(f.timeSec)}`} className="h-20 w-auto" loading="lazy" />
+              <img src={frameObjectUrl(f)} alt={`frame @ ${formatTime(f.timeSec)}`} className="h-20 w-auto" loading="lazy" />
               <figcaption className="bg-black/60 px-1.5 py-0.5 text-center font-mono text-[10px] text-[#5c93ff]">
                 {formatTime(f.timeSec)}
               </figcaption>

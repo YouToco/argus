@@ -25,7 +25,8 @@ export interface VideoFileInfo {
 export interface ExtractedFrame {
   id: string
   timeSec: number
-  dataUrl: string
+  /** JPEG payload — binary Blob, not base64 (33% smaller in IDB, no string churn) */
+  blob: Blob
   width: number
   height: number
   /** which tool produced it (for the UI log) */

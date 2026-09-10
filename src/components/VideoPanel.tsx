@@ -5,6 +5,7 @@ import { memory } from '../lib/agent/memory'
 import { formatBitrate, formatBytes, formatDuration, formatFps } from '../lib/format'
 import { Film } from 'lucide-react'
 import { startSession } from '../lib/persistence'
+import { useT } from '../lib/i18n'
 import { likelyNeedsTranscode, transcodeToMp4 } from '../lib/video/transcode'
 import type { VideoFileInfo } from '../types'
 
@@ -15,6 +16,7 @@ export function VideoPanel() {
   const setVideoInfo = useAppStore((s) => s.setVideoInfo)
   const clearFrames = useAppStore((s) => s.clearFrames)
   const reset = useAppStore((s) => s.reset)
+  const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -45,16 +47,16 @@ export function VideoPanel() {
           file = await transcodeToMp4(origFile, (p) => {
             setLoadNote(
               p.phase === 'downloading'
-                ? '正在下载内置转码器（ffmpeg.wasm，约 11MB，仅首次）…'
-                : `正在浏览器本地转码为 MP4… ${Math.round(p.ratio * 100)}%（不上传）`,
+                ? t('video.transcodeDownload')
+                : t('video.transcoding', { pct: Math.round(p.ratio * 100) }),
             )
           })
         } catch (e2) {
           throw new Error(
-            `浏览器无法直接解码该格式，内置转码也失败：${(e2 as Error)?.message ?? String(e2)}`,
+            t('video.transcodeFailed', { msg: (e2 as Error)?.message ?? String(e2) }),
           )
         }
-        setLoadNote('转码完成，正在加载…')
+        setLoadNote(t('video.transcodeDone'))
         s = await VideoSession.create(file)
       }
       setSession(s)
@@ -70,7 +72,7 @@ export function VideoPanel() {
         .then((full) => setVideoInfo(full))
         .catch(() => {})
     } catch (e) {
-      setError((e as Error)?.message ?? '视频加载失败')
+      setError((e as Error)?.message ?? t('video.loadFailed'))
     } finally {
       setLoading(false)
       setLoadNote(null)
@@ -84,7 +86,7 @@ export function VideoPanel() {
     const isVideo =
       f && (f.type.startsWith('video/') || /\.(mp4|webm|mkv|mov|m4v|avi|wmv|flv|asf|ts|m2ts|mpg|mpeg|vob|3gp|rm|rmvb)$/i.test(f.name))
     if (f && isVideo) loadFile(f)
-    else setError('请拖入视频文件')
+    else setError(t('video.dropError'))
   }
 
   return (
@@ -128,7 +130,7 @@ export function VideoPanel() {
             <Film size={videoInfo ? 24 : 32} className="text-zinc-300 transition-transform duration-200 group-hover:scale-110" />
             <div className="space-y-1.5">
               <span className="block text-sm font-bold tracking-tight text-white">
-                {loading ? (loadNote ?? '正在加载…') : videoInfo ? '重新加载视频文件以继续分析' : '点击或拖入本地视频（支持 MP4 / MKV / WebM / AVI 等）'}
+                {loading ? (loadNote ?? t('video.loading')) : videoInfo ? t('video.reloadToContinue') : t('video.dropHint')}
               </span>
               <span className="mono-label block text-zinc-600">local only · never uploaded</span>
             </div>
@@ -161,16 +163,17 @@ export function VideoPanel() {
 }
 
 function InfoCard({ info, detached }: { info: VideoFileInfo; detached?: boolean }) {
+  const t = useT()
   const rows: Array<[string, string]> = [
-    ['文件名', info.name],
-    ['大小', formatBytes(info.sizeBytes)],
-    ['时长', formatDuration(info.durationSec)],
-    ['分辨率', info.width ? `${info.width} × ${info.height}` : '-'],
-    ['帧率', formatFps(info.frameRate)],
-    ['编码', info.codec ?? '-'],
-    ['容器', info.container ?? '-'],
-    ['码率', formatBitrate(info.bitrate)],
-    ['音频', info.hasAudio ? '有' : '-'],
+    [t('info.name'), info.name],
+    [t('info.size'), formatBytes(info.sizeBytes)],
+    [t('info.duration'), formatDuration(info.durationSec)],
+    [t('info.resolution'), info.width ? `${info.width} × ${info.height}` : '-'],
+    [t('info.fps'), formatFps(info.frameRate)],
+    [t('info.codec'), info.codec ?? '-'],
+    [t('info.container'), info.container ?? '-'],
+    [t('info.bitrate'), formatBitrate(info.bitrate)],
+    [t('info.audio'), info.hasAudio ? t('info.audioYes') : '-'],
   ]
   return (
     <div className="fade-in rounded-md border border-white/[0.08] bg-black/40 p-4">

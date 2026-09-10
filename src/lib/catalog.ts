@@ -11,8 +11,8 @@ import type { ProviderPreset } from './providers'
  */
 
 const FETCH_URL = 'https://models.dev/api.json'
-const CACHE_KEY = 'argus:modelsdev:v2'
-const CACHE_KEY_META = 'argus:modelsdev:meta:v2'
+const CACHE_KEY = 'argus:modelsdev:v3'
+const CACHE_KEY_META = 'argus:modelsdev:meta:v3'
 
 /**
  * models.dev doesn't carry an `api` base URL for SDK-native providers (those are
@@ -101,11 +101,15 @@ export async function fetchCatalogPresets(force = false): Promise<ProviderPreset
       defaultModel,
       defaultBaseURL: api,
       baseURLPlaceholder: api || '留空使用官方端点',
+      baseURLPlaceholderEn: api || 'Leave empty for the official endpoint',
       models: models.map((m) => m.id),
       visionModels: vision.length ? vision : undefined,
       corsNote: api
         ? '来自 models.dev 目录。是否支持浏览器直连取决于该端点，建议先用「测试连接」验证；视觉任务选带 👁️ 的模型。'
         : '来自 models.dev 目录，无公开 OpenAI 兼容 base URL，需自行填写端点。',
+      corsNoteEn: api
+        ? 'From the models.dev catalog. Direct browser access depends on the endpoint — verify with a connection test; for vision tasks pick a model marked 👁️.'
+        : 'From the models.dev catalog. No public OpenAI-compatible base URL — enter an endpoint manually.',
       badge: local ? 'local' : transportFromNpm(p.npm) !== 'openai' ? 'official' : 'compatible',
       needsApiKey: !local,
       source: 'catalog',

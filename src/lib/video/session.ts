@@ -1,6 +1,7 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny'
 import type { InputVideoTrack } from 'mediabunny'
 import type { ExtractedFrame, VideoFileInfo } from '../../types'
+import { canvasToJpegBlob } from '../frames'
 
 // ---------------------------------------------------------------------------
 // Legacy rich-metadata probing (fallback path only, lazy WASM).
@@ -283,7 +284,7 @@ export class VideoSession {
   }
 
   /** scale + JPEG-encode a decoded canvas at the requested output width */
-  private encode(src: HTMLCanvasElement, timeSec: number, maxWidth: number, quality: number): ExtractedFrame {
+  private async encode(src: HTMLCanvasElement, timeSec: number, maxWidth: number, quality: number): Promise<ExtractedFrame> {
     const vw = src.width || 1
     const vh = src.height || 1
     const scale = maxWidth && maxWidth < vw ? maxWidth / vw : 1
@@ -294,10 +295,11 @@ export class VideoSession {
     c.height = h
     const ctx = c.getContext('2d')!
     ctx.drawImage(src, 0, 0, w, h)
+    const blob = await canvasToJpegBlob(c, quality)
     return {
       id: frameId(timeSec),
       timeSec,
-      dataUrl: c.toDataURL('image/jpeg', quality),
+      blob,
       width: w,
       height: h,
     }
@@ -312,7 +314,7 @@ export class VideoSession {
     if (this.bunny && !this.bunnyBroken) {
       try {
         const wrapped = await this.bunny.sink.getCanvas(clamped)
-        if (wrapped) return this.encode(wrapped.canvas as HTMLCanvasElement, wrapped.timestamp, maxWidth, quality)
+        if (wrapped) return await this.encode(wrapped.canvas as HTMLCanvasElement, wrapped.timestamp, maxWidth, quality)
         // null => timestamp before the first frame; fall through to <video>
         this.bunnyBroken = true
       } catch {
@@ -371,7 +373,7 @@ export class VideoSession {
         const out: ExtractedFrame[] = []
         for await (const wrapped of this.bunny.sink.canvasesAtTimestamps(sorted)) {
           if (!wrapped) continue
-          out.push(this.encode(wrapped.canvas as HTMLCanvasElement, wrapped.timestamp, maxWidth, quality))
+          out.push(await this.encode(wrapped.canvas as HTMLCanvasElement, wrapped.timestamp, maxWidth, quality))
         }
         if (out.length > 0) return out
         // nothing decodable — downgrade and retry via <video>
@@ -416,7 +418,7 @@ export class VideoSession {
     }
   }
 
-  private draw(video: HTMLVideoElement, maxWidth: number, quality: number): string {
+  private draw(video: HTMLVideoElement, maxWidth: number): void {
     const vw = video.videoWidth || 1
     const vh = video.videoHeight || 1
     const scale = maxWidth && maxWidth < vw ? maxWidth / vw : 1
@@ -427,7 +429,6 @@ export class VideoSession {
     c.height = h
     const ctx = c.getContext('2d')!
     ctx.drawImage(video, 0, 0, w, h)
-    return c.toDataURL('image/jpeg', quality)
   }
 
   private isBlack(): boolean {
@@ -451,16 +452,17 @@ export class VideoSession {
     quality: number,
   ): Promise<ExtractedFrame> {
     await this.seek(video, t)
-    let dataUrl = this.draw(video, maxWidth, quality)
+    this.draw(video, maxWidth)
     if (this.isBlack()) {
       await this.forceDecode(video)
       await this.seek(video, t)
-      dataUrl = this.draw(video, maxWidth, quality)
+      this.draw(video, maxWidth)
     }
+    const blob = await canvasToJpegBlob(this.canvas, quality)
     return {
       id: frameId(t),
       timeSec: t,
-      dataUrl,
+      blob,
       width: this.canvas.width,
       height: this.canvas.height,
     }

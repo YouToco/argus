@@ -5,6 +5,7 @@ import { createGoogle } from '@ai-sdk/google'
 import { generateText } from 'ai'
 import type { LanguageModel } from 'ai'
 import type { ProviderConfig, ProviderKind } from '../types'
+import type { I18nKey } from './i18n'
 
 /**
  * Transport kind selects which official AI SDK function drives a provider.
@@ -24,11 +25,15 @@ export interface ProviderPreset {
   /** '' = the vendor's official endpoint (use SDK default). */
   defaultBaseURL: string
   baseURLPlaceholder: string
+  /** English override for baseURLPlaceholder (falls back to baseURLPlaceholder). */
+  baseURLPlaceholderEn?: string
   /** model ids available to pick (for the datalist). */
   models: string[]
   /** subset of models that support vision / attachment. */
   visionModels?: string[]
   corsNote: string
+  /** English override for corsNote (falls back to corsNote). */
+  corsNoteEn?: string
   badge: 'official' | 'compatible' | 'local' | 'catalog'
   needsApiKey: boolean
   source: 'builtin' | 'catalog'
@@ -42,22 +47,27 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'],
     visionModels: ['gpt-4o', 'gpt-4.1'],
     corsNote: '官方 OpenAI API 会拦截浏览器跨域，直接填官方 key 会报 CORS。建议改用 OpenRouter，或把 baseURL 指向支持浏览器直连的兼容网关。',
+    corsNoteEn: 'The official OpenAI API blocks browser cross-origin requests, so an official key will hit CORS errors. Consider OpenRouter instead, or point baseURL to a compatible gateway that allows direct browser access.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'anthropic', name: 'Anthropic Claude', transport: 'anthropic',
     defaultModel: 'claude-sonnet-4-20250514', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
+    baseURLPlaceholderEn: 'Leave empty for the official endpoint',
     models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'],
     visionModels: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'],
     corsNote: '支持浏览器直连（已自动附加 direct-browser-access 请求头）。视觉分析用 claude-sonnet-4。',
+    corsNoteEn: 'Supports direct browser access (the direct-browser-access header is attached automatically). Use claude-sonnet-4 for vision analysis.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'google', name: 'Google Gemini', transport: 'google',
     defaultModel: 'gemini-2.5-flash', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
+    baseURLPlaceholderEn: 'Leave empty for the official endpoint',
     models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
     visionModels: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
     corsNote: '支持浏览器直连。视觉分析用 gemini-2.5-flash / gemini-2.5-pro。',
+    corsNoteEn: 'Supports direct browser access. Use gemini-2.5-flash / gemini-2.5-pro for vision analysis.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
@@ -66,6 +76,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat'],
     visionModels: ['openai/gpt-4o', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash'],
     corsNote: '浏览器直连友好，一个 key 访问几十家模型；视觉模型需选支持 vision 的。',
+    corsNoteEn: 'Browser-friendly. One key accesses dozens of models; pick a vision-capable model for vision tasks.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -74,6 +85,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-v4-pro'],
     visionModels: ['deepseek-v4-flash-vision-exp'],
     corsNote: '浏览器直连友好。视觉理解选 deepseek-v4-flash-vision-exp（2026-08 实验版，支持图片输入，带推理输出）；deepseek-v4-flash / v4-pro 为纯文本。',
+    corsNoteEn: 'Browser-friendly. For vision, choose deepseek-v4-flash-vision-exp (2026-08 experimental, image input with reasoning output); deepseek-v4-flash / v4-pro are text-only.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -81,6 +93,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     defaultModel: 'moonshot-v1-8k', defaultBaseURL: 'https://api.moonshot.cn/v1', baseURLPlaceholder: 'https://api.moonshot.cn/v1',
     models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-latest'],
     corsNote: '浏览器直连友好。kimi-latest / 视觉模型适合后续；当前模型偏文本。',
+    corsNoteEn: 'Browser-friendly. kimi-latest / vision models are better suited; current models lean text-only.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -89,6 +102,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['glm-4-v-plus', 'glm-4-plus', 'glm-4-flash'],
     visionModels: ['glm-4-v-plus'],
     corsNote: '浏览器直连友好。glm-4-v-plus 支持视觉。',
+    corsNoteEn: 'Browser-friendly. glm-4-v-plus supports vision.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -97,6 +111,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['qwen-vl-max', 'qwen-vl-plus', 'qwen-plus', 'qwen-max'],
     visionModels: ['qwen-vl-max', 'qwen-vl-plus'],
     corsNote: '浏览器直连友好。视觉用 qwen-vl-max / qwen-vl-plus。',
+    corsNoteEn: 'Browser-friendly. Use qwen-vl-max / qwen-vl-plus for vision.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -105,6 +120,7 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     models: ['qwen2.5-vl', 'llama3.2', 'llama3.1', 'gemma3'],
     visionModels: ['qwen2.5-vl'],
     corsNote: '完全本地、无需 key。需本机已运行 `ollama serve`；视觉模型用 qwen2.5-vl。',
+    corsNoteEn: 'Fully local, no key needed. Requires `ollama serve` running on this machine; use qwen2.5-vl for vision.',
     badge: 'local', needsApiKey: false, source: 'builtin',
   },
 ]
@@ -174,6 +190,8 @@ export interface ConnectionTestResult {
   ok: boolean
   latencyMs?: number
   error?: string
+  /** i18n key for known failures (takes precedence over `error` in the UI) */
+  errorKey?: I18nKey
 }
 
 /** Sends a tiny completion to validate the key + endpoint + model. */
@@ -188,9 +206,8 @@ export async function testConnection(cfg: ProviderConfig): Promise<ConnectionTes
     const isCors = /fetch|CORS|Failed to fetch|NetworkError|cross-origin/i.test(msg)
     return {
       ok: false,
-      error: isCors
-        ? '跨域/CORS 失败：该端点不允许浏览器直连。请检查 baseURL 或改用支持直连的 provider。'
-        : msg,
+      error: msg,
+      errorKey: isCors ? 'provider.error.cors' : undefined,
     }
   }
 }
@@ -199,6 +216,8 @@ export interface FetchModelsResult {
   ok: boolean
   models?: string[]
   error?: string
+  /** i18n key for known failures (takes precedence over `error` in the UI) */
+  errorKey?: I18nKey
 }
 
 /**
@@ -206,9 +225,9 @@ export interface FetchModelsResult {
  * Only meaningful for the 'openai' transport; other SDKs have no such REST shape.
  */
 export async function fetchModels(cfg: ProviderConfig, presetBaseURL?: string): Promise<FetchModelsResult> {
-  if (cfg.kind !== 'openai' && cfg.kind !== 'openai-compatible') return { ok: false, error: '该 provider 类型不支持拉取模型列表' }
+  if (cfg.kind !== 'openai' && cfg.kind !== 'openai-compatible') return { ok: false, errorKey: 'provider.error.unsupportedFetch' }
   const root = (cfg.baseURL.trim() || presetBaseURL || '').replace(/\/+$/, '')
-  if (!root) return { ok: false, error: '请先填写 Base URL' }
+  if (!root) return { ok: false, errorKey: 'provider.error.noBaseUrl' }
   try {
     const res = await fetch(`${root}/models`, {
       headers: cfg.apiKey.trim() ? { Authorization: `Bearer ${cfg.apiKey.trim()}` } : {},
@@ -222,11 +241,11 @@ export async function fetchModels(cfg: ProviderConfig, presetBaseURL?: string): 
       .map((m) => m?.id)
       .filter((x): x is string => typeof x === 'string' && x.length > 0)
       .sort()
-    if (ids.length === 0) return { ok: false, error: '端点返回了空模型列表' }
+    if (ids.length === 0) return { ok: false, errorKey: 'provider.error.emptyModels' }
     return { ok: true, models: ids }
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e)
     const isCors = /fetch|CORS|Failed to fetch|NetworkError|cross-origin/i.test(msg)
-    return { ok: false, error: isCors ? '跨域/CORS 失败：该端点不允许浏览器直连拉取列表。' : msg }
+    return { ok: false, error: msg, errorKey: isCors ? 'provider.error.corsList' : undefined }
   }
 }

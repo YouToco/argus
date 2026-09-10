@@ -5,6 +5,7 @@ import { History, Trash2, X } from 'lucide-react'
 import { useAppStore } from '../store'
 import { removeSession, restoreSession, wipeAllSessions } from '../lib/persistence'
 import { formatBytes } from '../lib/format'
+import { useT } from '../lib/i18n'
 
 function fmtDate(ts: number): string {
   const d = new Date(ts)
@@ -18,6 +19,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [confirmWipe, setConfirmWipe] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
+  const t = useT()
 
   async function onRestore(id: string) {
     setRestoring(id)
@@ -40,7 +42,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
             className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
           />
         </Dialog.Overlay>
-        <Dialog.Content asChild aria-label="历史记录">
+        <Dialog.Content asChild aria-label={t('history.aria')}>
           <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[8vh]" onClick={onClose}>
             <motion.div
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -55,7 +57,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                   history://
                 </h2>
                 <Dialog.Close asChild>
-                  <button type="button" className="btn-ghost rounded-sm p-1.5" aria-label="关闭">
+                  <button type="button" className="btn-ghost rounded-sm p-1.5" aria-label={t('history.close')}>
                     <X size={12} />
                   </button>
                 </Dialog.Close>
@@ -64,7 +66,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
               {sessions.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-10 text-center">
                   <History size={28} className="text-zinc-700" />
-                  <p className="text-xs text-zinc-500">暂无历史记录</p>
+                  <p className="text-xs text-zinc-500">{t('history.empty')}</p>
                   <p className="mono-label text-zinc-700">analysis sessions are persisted locally</p>
                 </div>
               ) : (
@@ -93,10 +95,10 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                             onClick={() => void removeSession(s.id)}
                             className="rounded-sm border border-red-500/40 bg-red-500/10 px-2.5 py-1 font-mono text-[10px] text-red-400 hover:bg-red-500/20"
                           >
-                            确认删除
+                            {t('history.confirmDelete')}
                           </button>
                           <button type="button" onClick={() => setConfirmId(null)} className="btn-ghost mono-label rounded-sm px-2.5 py-1">
-                            取消
+                            {t('history.cancel')}
                           </button>
                         </span>
                       ) : (
@@ -107,13 +109,13 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                             disabled={restoring !== null}
                             className="btn-primary rounded-sm px-3 py-1.5 text-[10px] font-bold tracking-wider disabled:opacity-40"
                           >
-                            {restoring === s.id ? 'RESTORING…' : '恢复'}
+                            {restoring === s.id ? 'RESTORING…' : t('history.restore')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setConfirmId(s.id)}
                             className="btn-ghost rounded-sm p-1.5 text-zinc-500 hover:text-red-400"
-                            title="删除该记录"
+                            title={t('history.deleteTip')}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -134,10 +136,10 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                         onClick={() => void wipeAllSessions().then(onClose)}
                         className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-1.5 font-mono text-[10px] text-red-400 hover:bg-red-500/20"
                       >
-                        确认清空全部
+                        {t('history.wipeConfirm')}
                       </button>
                       <button type="button" onClick={() => setConfirmWipe(false)} className="btn-ghost mono-label rounded-sm px-2.5 py-1">
-                        取消
+                        {t('history.cancel')}
                       </button>
                     </span>
                   ) : (
@@ -147,7 +149,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                       className="btn-ghost mono-label flex items-center gap-1.5 rounded-sm px-3 py-1.5 hover:text-red-400"
                     >
                       <Trash2 size={11} />
-                      清空全部
+                      {t('history.wipeAll')}
                     </button>
                   )}
                 </div>

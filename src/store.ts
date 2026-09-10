@@ -12,6 +12,7 @@ import { VideoSession } from './lib/video/session'
 import { memory } from './lib/agent/memory'
 import type { MemoryEntry } from './lib/agent/memory'
 import { BUILTIN_PRESETS, resolveProviderConfig, type ProviderPreset } from './lib/providers'
+import { initialLang, LANG_KEY, type Lang } from './lib/i18n'
 
 /**
  * In-memory frame window. Every frame is also persisted to IndexedDB, so
@@ -29,6 +30,9 @@ interface AppState {
   configs: Record<string, ProviderConfig>
   activeProviderId: string
 
+  /** UI language (persisted to localStorage) */
+  lang: Lang
+
   session: VideoSession | null
   videoInfo: VideoFileInfo | null
   frames: ExtractedFrame[]
@@ -43,6 +47,7 @@ interface AppState {
   sessions: SessionMeta[]
 
   setActiveProvider: (id: string) => void
+  setLang: (l: Lang) => void
   updateConfig: (id: string, patch: Partial<ProviderConfig>) => void
   appendPresets: (list: ProviderPreset[]) => void
   resetConfig: (id: string) => void
@@ -80,6 +85,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   presets: BUILTIN_PRESETS,
   configs: initial.configs,
   activeProviderId: initial.activeProviderId,
+  lang: initialLang(),
 
   session: null,
   videoInfo: null,
@@ -90,6 +96,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
   catalogStatus: 'loading',
   activeSessionId: null,
   sessions: [],
+
+  setLang: (l) => {
+    set({ lang: l })
+    try {
+      localStorage.setItem(LANG_KEY, l)
+    } catch {
+      /* storage may be unavailable */
+    }
+  },
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id })
