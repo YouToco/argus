@@ -1,25 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { Check, ChevronDown, Square, X } from 'lucide-react'
-import { useAppStore, getActiveProvider } from '../store'
-import { buildModel } from '../lib/providers'
-import { SYSTEM_PROMPT, runAgent } from '../lib/agent/harness'
+import { ArrowUp, Check, ChevronDown, CircleAlert, Images, ListTree, Square, X } from 'lucide-react'
+import { useAppStore, getActiveProvider, useActiveProvider } from '../store'
 import { memory } from '../lib/agent/memory'
 import type { AgentContext } from '../lib/agent/tools'
 import type { ChatMessage, ExtractedFrame, ToolActivity } from '../types'
 import { formatTime } from '../lib/format'
 import { loadFrameById } from '../lib/db'
-import { frameObjectUrl } from '../lib/frames'
 import { EyeIcon } from './icons'
-import { Markdown } from './Markdown'
-import { useT } from '../lib/i18n'
+import { FrameThumb } from './FrameThumb'
+import { useT, type I18nKey } from '../lib/i18n'
+
+// streamdown + shiki + the unified pipeline only load once there's an answer to render
+const Markdown = lazy(() => import('./Markdown'))
 
 let msgSeq = 0
 function nextId(): string {
   msgSeq += 1
   return `m-${msgSeq}`
 }
+
+const EXAMPLES: I18nKey[] = ['example.timeline', 'example.count', 'example.find', 'example.text']
 
 export function ChatPanel() {
   const messages = useAppStore((s) => s.messages)
@@ -29,17 +30,33 @@ export function ChatPanel() {
   const session = useAppStore((s) => s.session)
   const videoInfo = useAppStore((s) => s.videoInfo)
   const setRunning = useAppStore((s) => s.setRunning)
+  const setDialog = useAppStore((s) => s.setDialog)
+  const { preset, config, ready } = useActiveProvider()
   const t = useT()
 
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // stick to the newest content while streaming, but let the user freely
   // scroll back up without being yanked to the bottom on every token
   const { scrollRef, contentRef, scrollToBottom, isAtBottom } = useStickToBottom({ resize: 'smooth', initial: 'smooth' })
 
   const lastActivity = activities.length > 0 ? activities[activities.length - 1] : null
+
+  // auto-grow the composer up to ~8 lines
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [input])
+
+  function applyExample(key: I18nKey) {
+    setInput(t(key))
+    inputRef.current?.focus()
+  }
 
   async function send() {
     const text = input.trim()
@@ -68,34 +85,43 @@ export function ChatPanel() {
     useAppStore.getState().clearActivities()
     void scrollToBottom()
 
-    const startFrames = useAppStore.getState().frames.length
+    // ids of every frame this run extracts (sub-agents included); slicing the
+    // store by index breaks once the in-memory window is full and starts evicting
+    const runFrameIds: string[] = []
     const startActs = useAppStore.getState().activities.length
-
-    let model
-    try {
-      model = buildModel(cfg)
-    } catch (e) {
-      useAppStore.getState().updateMessage(asstMsg.id, {
-        pending: false,
-        error: true,
-        content: t('chat.modelInitFailed', { msg: (e as Error)?.message ?? String(e) }),
-      })
-      return
-    }
-
-    const ctx: AgentContext = {
-      session,
-      addFrames: (f) => useAppStore.getState().addFrames(f),
-      listFrames: () => useAppStore.getState().frames,
-      getFrameById: (id) => useAppStore.getState().frames.find((fr) => fr.id === id),
-      memory,
-      runSubagent: () => Promise.resolve(''),
-    }
 
     abortRef.current = new AbortController()
     setRunning(true)
 
     try {
+      // the AI SDK + provider packages (~1MB) load on the first send
+      const [{ buildModel }, { SYSTEM_PROMPT, runAgent }] = await Promise.all([
+        import('../lib/llm'),
+        import('../lib/agent/harness'),
+      ])
+      let model
+      try {
+        model = buildModel(cfg)
+      } catch (e) {
+        useAppStore.getState().updateMessage(asstMsg.id, {
+          error: true,
+          content: t('chat.modelInitFailed', { msg: (e as Error)?.message ?? String(e) }),
+        })
+        return
+      }
+
+      const ctx: AgentContext = {
+        session,
+        addFrames: (f) => {
+          runFrameIds.push(...f.map((x) => x.id))
+          useAppStore.getState().addFrames(f)
+        },
+        listFrames: () => useAppStore.getState().frames,
+        getFrameById: (id) => useAppStore.getState().frames.find((fr) => fr.id === id),
+        memory,
+        runSubagent: () => Promise.resolve(''),
+      }
+
       await runAgent({
         model,
         system: SYSTEM_PROMPT,
@@ -113,15 +139,13 @@ export function ChatPanel() {
       } else {
         useAppStore.getState().updateMessage(asstMsg.id, { error: true })
         const msg = (e as Error)?.message ?? String(e)
-        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}\n${t('chat.corsHint')}`)
+        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}\n\n${t('chat.corsHint')}`)
       }
     } finally {
-      const st = useAppStore.getState()
-      const newFrames = st.frames.slice(startFrames)
-      const newActs = st.activities.slice(startActs)
+      const newActs = useAppStore.getState().activities.slice(startActs)
       useAppStore.getState().updateMessage(asstMsg.id, {
         pending: false,
-        frameIds: newFrames.map((f) => f.id),
+        frameIds: [...new Set(runFrameIds)],
         activities: newActs,
       })
       setRunning(false)
@@ -133,118 +157,198 @@ export function ChatPanel() {
     abortRef.current?.abort()
   }
 
+  const canSend = !running && input.trim().length > 0
+
   return (
-    <div className="flex h-full flex-col">
-      <div ref={scrollRef} className="scroll-thin relative flex-1 overflow-y-auto">
-        <div ref={contentRef} className="flex min-h-full flex-col space-y-5 px-5 py-5">
-          {messages.length === 0 && <EmptyState />}
-          {messages.map((m) => (
-            <Message
-              key={m.id}
-              message={m}
-              frames={frames}
-              liveActivities={m.pending ? activities : undefined}
-              running={running}
-            />
-          ))}
+    <div className="flex h-full min-h-0 flex-col">
+      {messages.length === 0 ? (
+        // outside the stick-to-bottom scroller, so a tall onboarding view starts at its top
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-6 sm:px-6">
+            <EmptyState onExample={applyExample} />
+          </div>
         </div>
+      ) : (
+        <div ref={scrollRef} className="scroll-thin relative min-h-0 flex-1 overflow-y-auto">
+          <div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-4xl flex-col gap-6 px-4 py-6 sm:px-6">
+            {messages.map((m) => (
+              <Message key={m.id} message={m} frames={frames} liveActivities={m.pending ? activities : undefined} running={running} />
+            ))}
+          </div>
 
-        {!isAtBottom && (
-          <button
-            type="button"
-            onClick={() => void scrollToBottom()}
-            className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-white/10 bg-[#0a0a0a]/90 text-zinc-300 shadow-lg shadow-black backdrop-blur-sm transition-colors hover:border-[#3d7fff]/60 hover:text-[#5c93ff]"
-            aria-label={t('chat.backToBottom')}
-          >
-            <ChevronDown size={15} />
-          </button>
-        )}
-      </div>
-
-      {videoInfo && !session && (
-        <div className="border-t border-white/[0.08] bg-[#3d7fff]/5 px-4 py-2">
-          <p className="mono-label text-zinc-500">
-            restored from local history · reload <span className="text-[#5c93ff]">{videoInfo.name}</span> to continue
-          </p>
+          {!isAtBottom && (
+            <button
+              type="button"
+              onClick={() => void scrollToBottom()}
+              className="sticky bottom-4 mx-auto flex h-8 w-8 items-center justify-center rounded-full border border-line-strong bg-elevated text-fg-2 shadow-lg backdrop-blur-sm transition-colors hover:text-accent-text"
+              aria-label={t('chat.backToBottom')}
+            >
+              <ChevronDown size={16} />
+            </button>
+          )}
         </div>
       )}
 
-      <div className="border-t border-white/[0.08] bg-black/40 p-4">
-        {running && (
-          <div className="fade-in mb-3 flex items-center gap-2.5 rounded-md border border-white/[0.08] bg-white/[0.02] px-3 py-2">
-            <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
-            {lastActivity ? (
-              <span className="font-mono text-[11px] text-zinc-400">
-                {t('chat.calling')} <span className="text-[#5c93ff]">{lastActivity.toolName}</span>
-                {lastActivity.depth > 0 ? t('chat.subagentSuffix') : ''}
+      {videoInfo && !session && (
+        <div className="flex items-center gap-2 border-t border-warn/25 bg-warn-soft px-4 py-2 text-xs text-warn">
+          <CircleAlert size={14} className="shrink-0" />
+          <span className="min-w-0 truncate">{t('chat.restored', { name: videoInfo.name })}</span>
+        </div>
+      )}
+
+      <div className="border-t border-line bg-surface px-3 pb-3 pt-3 sm:px-4">
+        <div className="mx-auto w-full max-w-4xl">
+          {running && (
+            <div className="fade-in mb-2.5 flex items-center gap-2.5 px-1 text-xs text-fg-3">
+              <span className="status-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+              {lastActivity ? (
+                <span className="min-w-0 truncate">
+                  {t('chat.calling')} <span className="font-mono text-accent-text">{lastActivity.toolName}</span>
+                  {lastActivity.depth > 0 ? t('chat.subagentSuffix') : ''}
+                </span>
+              ) : (
+                <span>{t('chat.thinking')}</span>
+              )}
+            </div>
+          )}
+          {error && (
+            <p className="fade-in mb-2.5 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs text-danger">
+              <CircleAlert size={14} className="mt-px shrink-0" />
+              {error}
+            </p>
+          )}
+          <div className="field flex flex-col gap-1 px-3 pb-2 pt-2.5">
+            <textarea
+              ref={inputRef}
+              id="chat-input"
+              name="chat-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  void send()
+                }
+              }}
+              rows={1}
+              placeholder={session ? t('chat.placeholder') : t('chat.placeholderNoVideo')}
+              className="scroll-thin max-h-[200px] min-h-[24px] w-full resize-none bg-transparent text-[14px] leading-6 text-fg outline-none placeholder:text-fg-4"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDialog('provider')}
+                className="chip min-w-0 max-w-[60%] text-fg-3 transition-colors hover:border-line-strong hover:text-fg"
+                title={t('app.modelSettings')}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? 'bg-ok' : 'bg-warn'}`} />
+                <span className="truncate">{ready ? `${preset?.name ?? config.id} · ${config.model}` : t('app.setupModel')}</span>
+              </button>
+              <span className="hidden items-center gap-1 text-[11px] text-fg-4 md:flex">
+                <span className="kbd">Enter</span> {t('chat.sendKey')} · <span className="kbd">Shift+Enter</span> {t('chat.newlineKey')}
               </span>
-            ) : (
-              <span className="mono-label text-zinc-500">{t('chat.thinking')}</span>
-            )}
-            <button onClick={stop} className="btn-ghost mono-label ml-auto flex items-center gap-1.5 rounded-sm px-2.5 py-1">
-              <Square size={9} fill="currentColor" strokeWidth={0} />
-              stop
-            </button>
+              {running ? (
+                <button
+                  type="button"
+                  onClick={stop}
+                  className="btn btn-danger ml-auto h-8 px-3 text-xs"
+                  aria-label={t('chat.stop')}
+                >
+                  <Square size={10} fill="currentColor" strokeWidth={0} />
+                  {t('chat.stop')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={!canSend}
+                  className="btn btn-primary ml-auto h-8 w-8 rounded-full"
+                  aria-label={t('chat.send')}
+                  title={t('chat.send')}
+                >
+                  <ArrowUp size={16} strokeWidth={2.25} />
+                </button>
+              )}
+            </div>
           </div>
-        )}
-        {error && (
-          <p className="fade-in mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
-        )}
-        <div className="flex items-end gap-2.5">
-          <textarea
-            id="chat-input"
-            name="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-            rows={2}
-            placeholder={t('chat.placeholder')}
-            className="input-line scroll-thin flex-1 resize-none rounded-md border border-white/10 bg-black/60 px-3.5 py-2.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
-          />
-          <button
-            onClick={running ? stop : send}
-            disabled={!running && !input.trim()}
-            className={`flex items-center gap-1.5 rounded-md px-5 py-2.5 text-xs font-bold tracking-wide ${
-              running
-                ? 'btn-ghost border-red-500/40 text-red-400 hover:border-red-400 hover:bg-red-500/10 hover:text-red-300'
-                : 'btn-primary'
-            }`}
-          >
-            {running ? (
-              <>
-                <Square size={9} fill="currentColor" strokeWidth={0} />
-                {t('chat.stop')}
-              </>
-            ) : (
-              t('chat.send')
-            )}
-          </button>
         </div>
       </div>
     </div>
   )
 }
 
-function EmptyState() {
+function EmptyState({ onExample }: { onExample: (k: I18nKey) => void }) {
   const t = useT()
+  const hasVideo = useAppStore((s) => s.session !== null)
+  const setDialog = useAppStore((s) => s.setDialog)
+  const { preset, ready } = useActiveProvider()
+
+  const steps = [
+    {
+      done: ready,
+      title: t('empty.step1'),
+      desc: ready ? t('empty.step1Done', { name: preset?.name ?? '' }) : t('empty.step1Desc'),
+      action: !ready ? (
+        <button type="button" onClick={() => setDialog('provider')} className="btn btn-primary mt-2 h-7 px-2.5 text-xs">
+          {t('empty.step1Action')}
+        </button>
+      ) : null,
+    },
+    { done: hasVideo, title: t('empty.step2'), desc: hasVideo ? t('empty.step2Done') : t('empty.step2Desc') },
+    { done: false, title: t('empty.step3'), desc: t('empty.step3Desc') },
+  ]
+
   return (
-    <div className="fade-in flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
-      <p className="mono-label text-[#5c93ff]">long-video understanding · agent harness</p>
-      <div className="flex items-center gap-3">
-        <EyeIcon size={56} className="shrink-0 text-[#3d7fff]" />
-        <h2 className="whitespace-nowrap text-[clamp(2rem,6vw,3.75rem)] font-extrabold tracking-tighter text-white">
-          Argus<span className="caret ml-1.5" />
-        </h2>
+    <div className="fade-in flex flex-1 flex-col items-center justify-center gap-7 py-6 text-center">
+      <div className="flex flex-col items-center gap-4">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent-text ring-1 ring-accent-line">
+          <EyeIcon size={30} />
+        </span>
+        <div className="space-y-2">
+          <h2 className="text-[clamp(1.6rem,4vw,2.25rem)] font-bold tracking-tight">{t('empty.title')}</h2>
+          <p className="mx-auto max-w-lg text-sm leading-relaxed text-fg-3">{t('chat.emptyDesc')}</p>
+        </div>
       </div>
-      <p className="max-w-md text-sm leading-relaxed text-zinc-500">
-        {t('chat.emptyDesc')}
-      </p>
-      <p className="mono-label text-zinc-700">drop a video on the left to begin</p>
+
+      <ol className="grid w-full max-w-2xl gap-2.5 text-left sm:grid-cols-3">
+        {steps.map((s, i) => (
+          <li
+            key={i}
+            className={`rounded-xl border p-3.5 transition-colors ${s.done ? 'border-ok/25 bg-ok-soft' : 'border-line bg-surface-2/60'}`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                  s.done ? 'bg-ok text-white' : 'bg-surface-3 text-fg-3'
+                }`}
+              >
+                {s.done ? <Check size={12} strokeWidth={3} /> : i + 1}
+              </span>
+              <span className="text-[13px] font-semibold">{s.title}</span>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-fg-3">{s.desc}</p>
+            {s.action}
+          </li>
+        ))}
+      </ol>
+
+      {hasVideo && (
+        <div className="w-full max-w-2xl">
+          <p className="label mb-2.5">{t('empty.tryAsking')}</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {EXAMPLES.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => onExample(k)}
+                className="rounded-full border border-line bg-surface px-3.5 py-1.5 text-[13px] text-fg-2 transition-colors hover:border-accent-line hover:bg-accent-soft hover:text-fg"
+              >
+                {t(k)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -290,97 +394,95 @@ function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: 
   const mainCount = items.filter((a) => a.depth === 0).length
   const subCount = items.length - mainCount
   const runningCount = items.filter((a) => a.status === 'running').length
+  const errorCount = items.filter((a) => a.status === 'error').length
 
+  // open while the agent works, fold away once the answer is in
+  const wasLive = useRef(live)
   useEffect(() => {
     if (live) setOpen(true)
+    else if (wasLive.current) setOpen(false)
+    wasLive.current = live
   }, [live])
 
   return (
-    <div className="rounded-md border border-white/[0.08] bg-black/30">
+    <div className="overflow-hidden rounded-xl border border-line bg-surface-2/50">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        aria-expanded={open}
+        className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-xs transition-colors hover:bg-surface-2"
       >
         {live ? (
-          <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
+          <span className="status-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
         ) : (
-          <Check size={11} className="shrink-0 text-emerald-400" />
+          <ListTree size={14} className="shrink-0 text-fg-3" />
         )}
-        <span className="mono-label text-zinc-400">
-          {live ? t('process.working', { n: mainCount }) : t('process.done', { n: mainCount })}
+        <span className="font-semibold text-fg-2">{live ? t('process.working') : t('process.done')}</span>
+        <span className="text-fg-3">
+          {t('process.steps', { n: mainCount })}
           {subCount > 0 ? t('process.subagents', { n: subCount }) : ''}
           {live && runningCount > 0 ? t('process.running', { n: runningCount }) : ''}
         </span>
-        <ChevronDown
-          size={12}
-          className={`ml-auto shrink-0 text-zinc-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
+        {errorCount > 0 && <span className="chip border-danger/30 bg-danger-soft text-danger">{t('process.errors', { n: errorCount })}</span>}
+        <ChevronDown size={14} className={`ml-auto shrink-0 text-fg-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
-          >
-            <ul className="scroll-thin max-h-72 space-y-px overflow-y-auto border-t border-white/[0.06] p-1.5">
-              {items.map((a) => (
-                <ProcessItem key={a.id} activity={a} />
-              ))}
-              {items.length === 0 && <li className="mono-label px-3 py-2 text-zinc-600">{t('process.waiting')}</li>}
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* grid-rows 0fr→1fr animates height without measuring */}
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div className="min-h-0 overflow-hidden">
+          <ul className="scroll-thin max-h-80 space-y-px overflow-y-auto border-t border-line p-1.5">
+            {items.map((a) => (
+              <ProcessItem key={a.id} activity={a} />
+            ))}
+            {items.length === 0 && <li className="px-3 py-2 text-xs text-fg-3">{t('process.waiting')}</li>}
+          </ul>
+        </div>
+      </div>
     </div>
   )
 }
 
 function ProcessItem({ activity: a }: { activity: ToolActivity }) {
+  const t = useT()
   const [detail, setDetail] = useState(false)
   const isSub = a.depth > 0
   const b = brief(a.input)
   return (
-    <li className={isSub ? 'ml-4 border-l border-[#3d7fff]/25 pl-2' : ''}>
+    <li className={isSub ? 'ml-5 border-l border-accent-line pl-2' : ''}>
       <button
         type="button"
         onClick={() => setDetail((v) => !v)}
-        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]"
+        aria-expanded={detail}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-3/60"
       >
         {a.status === 'running' ? (
-          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#3d7fff]" />
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" />
         ) : a.status === 'error' ? (
-          <X size={10} className="shrink-0 text-red-400" />
+          <X size={12} className="shrink-0 text-danger" />
         ) : (
-          <Check size={10} className="shrink-0 text-emerald-500/80" />
+          <Check size={12} className="shrink-0 text-ok" />
         )}
-        <span className={`shrink-0 font-mono text-[11px] ${isSub ? 'text-[#5c93ff]/80' : 'text-zinc-300'}`}>
-          {a.toolName}
-        </span>
-        {isSub && <span className="mono-label shrink-0 rounded-sm border border-[#3d7fff]/40 px-1 py-px text-[8px] text-[#5c93ff]">sub</span>}
-        {b && <span className="min-w-0 truncate font-mono text-[10px] text-zinc-600">{b}</span>}
+        <span className={`shrink-0 font-mono text-[12px] ${isSub ? 'text-accent-text' : 'text-fg-2'}`}>{a.toolName}</span>
+        {isSub && <span className="chip shrink-0 border-accent-line px-1.5 text-[10px] leading-4 text-accent-text">{t('process.sub')}</span>}
+        {b && <span className="min-w-0 truncate font-mono text-[11px] text-fg-3">{b}</span>}
         {a.summary && (
-          <span className="ml-auto min-w-0 max-w-[45%] truncate text-right text-[10px] text-zinc-600" title={a.summary}>
+          <span className="ml-auto hidden min-w-0 max-w-[45%] truncate text-right text-[11px] text-fg-3 sm:block" title={a.summary}>
             {a.summary}
           </span>
         )}
       </button>
       {detail && (
-        <div className="mx-2 mb-1.5 space-y-1.5 rounded-sm border border-white/[0.06] bg-black/50 p-2.5">
+        <div className="mx-2 mb-1.5 space-y-2 rounded-lg border border-line bg-surface p-2.5">
           <div>
-            <p className="mono-label mb-1 text-zinc-600">input</p>
-            <pre className="scroll-thin max-h-32 overflow-auto font-mono text-[10px] leading-relaxed text-zinc-400">
+            <p className="mb-1 text-[11px] font-semibold text-fg-3">{t('process.input')}</p>
+            <pre className="scroll-thin max-h-32 overflow-auto font-mono text-[11px] leading-relaxed text-fg-2">
               {JSON.stringify(a.input, null, 2)}
             </pre>
           </div>
           {a.summary && (
             <div>
-              <p className="mono-label mb-1 text-zinc-600">result</p>
-              <p className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">{a.summary}</p>
+              <p className="mb-1 text-[11px] font-semibold text-fg-3">{t('process.result')}</p>
+              <p className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-fg-2">{a.summary}</p>
             </div>
           )}
         </div>
@@ -431,6 +533,7 @@ function Message({
   running: boolean
 }) {
   const t = useT()
+  const openLightbox = useAppStore((s) => s.openLightbox)
   const isUser = message.role === 'user'
   useLazyFrames(message.frameIds, isUser)
   const frameObjs = (message.frameIds ?? [])
@@ -440,7 +543,7 @@ function Message({
   if (isUser) {
     return (
       <div className="fade-in flex justify-end">
-        <div className="max-w-[85%] rounded-md rounded-br-none bg-[#3d7fff] px-4 py-2.5 text-sm font-medium text-black">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[14px] leading-relaxed text-accent-fg">
           <span className="whitespace-pre-wrap">{message.content}</span>
         </div>
       </div>
@@ -448,37 +551,57 @@ function Message({
   }
 
   const trace = liveActivities ?? message.activities ?? []
+  const streaming = Boolean(message.pending && running)
 
   return (
-    <div className="fade-in flex flex-col gap-2.5">
-      {trace.length > 0 && <ProcessBlock activities={trace} live={Boolean(liveActivities) && running} />}
+    <div className="fade-in flex gap-3">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-text ring-1 ring-accent-line">
+        <EyeIcon size={16} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {trace.length > 0 && <ProcessBlock activities={trace} live={Boolean(liveActivities) && running} />}
 
-      <div className="max-w-full rounded-md rounded-bl-none border border-white/[0.08] bg-white/[0.02] px-4 py-3 text-sm text-zinc-200">
-        {message.content ? (
-          <Markdown content={message.content} streaming={message.pending && running} />
-        ) : (
-          message.pending && (
-            <span className="mono-label flex items-center gap-2 text-zinc-600">
-              {t('chat.thinkingInline')}
-              <span className="caret" />
+        <div className="min-w-0">
+          {message.content ? (
+            <Suspense fallback={<p className="whitespace-pre-wrap text-[14px] leading-[1.75] text-fg-2">{message.content}</p>}>
+              <Markdown content={message.content} streaming={streaming} />
+            </Suspense>
+          ) : (
+            message.pending && (
+              <span className="flex items-center gap-2 text-sm text-fg-3">
+                {t('chat.thinkingInline')}
+                <span className="caret" />
+              </span>
+            )
+          )}
+          {message.error && (
+            <span className="chip mt-2 border-danger/30 bg-danger-soft text-danger">
+              <CircleAlert size={12} />
+              {t('chat.errorMark')}
             </span>
-          )
-        )}
-        {message.error && <span className="ml-2 text-xs text-red-400">{t('chat.errorMark')}</span>}
-      </div>
-
-      {frameObjs.length > 0 && (
-        <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
-          {frameObjs.map((f) => (
-            <figure key={f.id} className="shrink-0 overflow-hidden rounded-md border border-white/[0.08] transition-colors hover:border-[#3d7fff]/60">
-              <img src={frameObjectUrl(f)} alt={`frame @ ${formatTime(f.timeSec)}`} className="h-20 w-auto" loading="lazy" />
-              <figcaption className="bg-black/60 px-1.5 py-0.5 text-center font-mono text-[10px] text-[#5c93ff]">
-                {formatTime(f.timeSec)}
-              </figcaption>
-            </figure>
-          ))}
+          )}
         </div>
-      )}
+
+        {frameObjs.length > 0 && (
+          <div>
+            <p className="label mb-2 flex items-center gap-1.5">
+              <Images size={13} className="text-fg-4" />
+              {t('chat.evidence', { n: frameObjs.length })}
+            </p>
+            <div className="scroll-thin -mx-1 flex gap-2 overflow-x-auto px-1 pb-1.5">
+              {frameObjs.map((f, i) => (
+                <FrameThumb
+                  key={f.id}
+                  frame={f}
+                  className="h-[72px] w-32"
+                  label={t('frames.open', { time: formatTime(f.timeSec) })}
+                  onOpen={() => openLightbox(frameObjs.map((x) => x.id), i)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,28 +1,25 @@
-import { useEffect, useState } from 'react'
-import { useAppStore, getPreset } from './store'
+import { lazy, Suspense, useEffect } from 'react'
+import { useAppStore, useActiveProvider } from './store'
 import { fetchCatalogPresets } from './lib/catalog'
 import { bootstrapPersistence, startAutosave } from './lib/persistence'
-import { ProviderPanel } from './components/ProviderPanel'
-import { HistoryPanel } from './components/HistoryPanel'
 import { VideoPanel } from './components/VideoPanel'
 import { FrameGrid } from './components/FrameGrid'
 import { ChatPanel } from './components/ChatPanel'
-import { History, Settings } from 'lucide-react'
+import { History, Monitor, Moon, Settings2, Sun } from 'lucide-react'
 import { EyeIcon } from './components/icons'
 import { useT } from './lib/i18n'
+import { nextThemeMode, watchSystemTheme } from './lib/theme'
+
+// dialogs are only needed on demand — keep cmdk & friends out of the first paint
+const ProviderPanel = lazy(() => import('./components/ProviderPanel').then((m) => ({ default: m.ProviderPanel })))
+const HistoryPanel = lazy(() => import('./components/HistoryPanel').then((m) => ({ default: m.HistoryPanel })))
+const FrameLightbox = lazy(() => import('./components/FrameLightbox').then((m) => ({ default: m.FrameLightbox })))
 
 export default function App() {
-  const [showProvider, setShowProvider] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const activeProviderId = useAppStore((s) => s.activeProviderId)
-  const running = useAppStore((s) => s.running)
-  const providerName = getPreset(activeProviderId)?.name ?? ''
-  const hasVideo = useAppStore((s) => !!s.session)
-  const catalogStatus = useAppStore((s) => s.catalogStatus)
+  const dialog = useAppStore((s) => s.dialog)
+  const setDialog = useAppStore((s) => s.setDialog)
+  const lightboxOpen = useAppStore((s) => s.lightbox !== null)
   const setCatalogStatus = useAppStore((s) => s.setCatalogStatus)
-  const lang = useAppStore((s) => s.lang)
-  const setLang = useAppStore((s) => s.setLang)
-  const t = useT()
 
   useEffect(() => {
     setCatalogStatus('loading')
@@ -40,75 +37,123 @@ export default function App() {
     return startAutosave()
   }, [])
 
+  useEffect(() => watchSystemTheme(() => useAppStore.getState().themeMode), [])
+
   return (
     <div className="relative flex h-full flex-col">
       <div className="bg-glow" aria-hidden="true" />
       <div className="bg-grid" aria-hidden="true" />
 
-      <header className="relative z-10 flex items-center gap-4 border-b border-white/[0.08] bg-black/70 px-5 py-3 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#3d7fff] text-black">
-            <EyeIcon size={20} />
-          </span>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-extrabold tracking-tighter text-white">Argus</h1>
-              <span className="mono-label rounded-sm border border-white/15 px-2 py-0.5 text-zinc-400">
-                {t('app.tagline')}
-              </span>
-            </div>
-            <p className="mono-label mt-0.5 text-zinc-600">frontend-local · multi-provider agent harness</p>
-          </div>
-        </div>
+      <Header />
 
-        <div className="ml-auto flex items-center gap-3">
-          {running && (
-            <span className="mono-label flex items-center gap-2 text-[#5c93ff]">
-              <span className="status-dot h-1.5 w-1.5 rounded-full bg-[#3d7fff]" />
-              analyzing
-            </span>
-          )}
-          <button
-            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-            className="btn-ghost mono-label flex items-center rounded-md px-3 py-2"
-            title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
-          >
-            {lang === 'zh' ? 'EN' : '中'}
-          </button>
-          <button
-            onClick={() => setShowHistory(true)}
-            className="btn-ghost flex items-center gap-2 rounded-md px-3 py-2 text-xs"
-            title={t('app.historyTip')}
-          >
-            <History size={14} />
-            <span className="mono-label hidden sm:inline">history</span>
-          </button>
-          <button
-            onClick={() => setShowProvider(true)}
-            className="btn-primary flex items-center gap-2 rounded-md px-4 py-2 text-xs font-bold"
-          >
-            <Settings size={14} />
-            <span>{providerName}</span>
-            {catalogStatus === 'loading' && <span className="opacity-60">· …</span>}
-            <span className="hidden opacity-60 sm:inline">{hasVideo ? '· video loaded' : '· no video'}</span>
-          </button>
-        </div>
-      </header>
-
-      <main className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
-        <aside className="card flex w-[320px] shrink-0 flex-col gap-4 overflow-hidden p-4">
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:flex-row lg:overflow-hidden">
+        <aside className="card flex shrink-0 flex-col lg:w-[360px] lg:overflow-hidden">
           <VideoPanel />
-          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto border-t border-white/[0.06] pt-3">
+          <div className="scroll-thin min-h-0 flex-1 border-t border-line lg:overflow-y-auto">
             <FrameGrid />
           </div>
         </aside>
-        <section className="card min-w-0 flex-1 overflow-hidden">
+        <section className="card flex h-[85dvh] min-w-0 shrink-0 flex-col overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink">
           <ChatPanel />
         </section>
       </main>
 
-      {showProvider && <ProviderPanel onClose={() => setShowProvider(false)} />}
-      {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
+      <Suspense fallback={null}>
+        {dialog === 'provider' && <ProviderPanel onClose={() => setDialog(null)} />}
+        {dialog === 'history' && <HistoryPanel onClose={() => setDialog(null)} />}
+        {lightboxOpen && <FrameLightbox />}
+      </Suspense>
     </div>
+  )
+}
+
+function Header() {
+  const t = useT()
+  const running = useAppStore((s) => s.running)
+  const lang = useAppStore((s) => s.lang)
+  const setLang = useAppStore((s) => s.setLang)
+  const themeMode = useAppStore((s) => s.themeMode)
+  const setThemeMode = useAppStore((s) => s.setThemeMode)
+  const setDialog = useAppStore((s) => s.setDialog)
+  const catalogStatus = useAppStore((s) => s.catalogStatus)
+  const { preset, config, ready } = useActiveProvider()
+
+  const ThemeIcon = themeMode === 'system' ? Monitor : themeMode === 'light' ? Sun : Moon
+  const themeLabel = t(themeMode === 'system' ? 'theme.system' : themeMode === 'light' ? 'theme.light' : 'theme.dark')
+
+  return (
+    <header className="relative z-10 flex items-center gap-3 border-b border-line bg-bg/75 px-4 py-2.5 backdrop-blur-md sm:px-5">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-accent text-accent-fg shadow-[0_6px_20px_-6px_var(--accent)]">
+          <EyeIcon size={20} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-[17px] font-bold leading-tight tracking-tight">Argus</h1>
+          <p className="hidden truncate text-xs text-fg-3 sm:block">{t('app.subtitle')}</p>
+        </div>
+      </div>
+
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        {running && (
+          <span className="chip mr-1 hidden border-accent-line bg-accent-soft text-accent-text md:inline-flex">
+            <span className="status-dot h-1.5 w-1.5 rounded-full bg-accent" />
+            {t('app.analyzing')}
+          </span>
+        )}
+
+        <div className="flex rounded-lg border border-line p-0.5" role="group" aria-label={t('app.language')}>
+          {(['zh', 'en'] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLang(l)}
+              aria-pressed={lang === l}
+              className={`rounded-md px-2 py-1 text-xs font-semibold transition-colors ${
+                lang === l ? 'bg-surface-3 text-fg' : 'text-fg-3 hover:text-fg'
+              }`}
+            >
+              {l === 'zh' ? '中' : 'EN'}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setThemeMode(nextThemeMode(themeMode))}
+          className="btn btn-ghost h-8 w-8"
+          title={`${t('theme.label')}: ${themeLabel}`}
+          aria-label={`${t('theme.label')}: ${themeLabel}`}
+        >
+          <ThemeIcon size={15} />
+        </button>
+
+        <button type="button" onClick={() => setDialog('history')} className="btn btn-ghost h-8 px-2.5 text-xs" title={t('app.historyTip')}>
+          <History size={15} />
+          <span className="hidden sm:inline">{t('app.history')}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setDialog('provider')}
+          className={`btn h-8 max-w-[46vw] px-3 text-xs ${ready ? 'btn-ghost' : 'btn-primary'}`}
+          title={t('app.modelSettings')}
+        >
+          {ready ? (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+          ) : (
+            <Settings2 size={14} className="shrink-0" />
+          )}
+          {ready ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate font-semibold text-fg">{preset?.name ?? config.id}</span>
+              <span className="hidden truncate font-mono text-[11px] font-normal text-fg-3 md:inline">{config.model}</span>
+            </span>
+          ) : (
+            <span className="truncate">{t('app.setupModel')}</span>
+          )}
+          {catalogStatus === 'loading' && <span className="opacity-60">…</span>}
+        </button>
+      </div>
+    </header>
   )
 }

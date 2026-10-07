@@ -8,11 +8,12 @@ import type {
 } from './types'
 import type { SessionMeta } from './lib/db'
 import { loadSettings, saveSettings } from './lib/settings'
-import { VideoSession } from './lib/video/session'
+import type { VideoSession } from './lib/video/session'
 import { memory } from './lib/agent/memory'
 import type { MemoryEntry } from './lib/agent/memory'
 import { BUILTIN_PRESETS, resolveProviderConfig, type ProviderPreset } from './lib/providers'
 import { initialLang, LANG_KEY, type Lang } from './lib/i18n'
+import { applyTheme, initialThemeMode, THEME_KEY, type ThemeMode } from './lib/theme'
 
 /**
  * In-memory frame window. Every frame is also persisted to IndexedDB, so
@@ -32,6 +33,15 @@ interface AppState {
 
   /** UI language (persisted to localStorage) */
   lang: Lang
+  /** colour theme preference (persisted); the resolved value lives on <html data-theme> */
+  themeMode: ThemeMode
+
+  /** which top-level dialog is open */
+  dialog: 'provider' | 'history' | null
+  /** latest "jump the player to t" request; `n` makes repeated seeks to the same t distinct */
+  seekRequest: { t: number; n: number } | null
+  /** frame viewer: an ordered list of frame ids and the one being shown */
+  lightbox: { frameIds: string[]; index: number } | null
 
   session: VideoSession | null
   videoInfo: VideoFileInfo | null
@@ -48,6 +58,12 @@ interface AppState {
 
   setActiveProvider: (id: string) => void
   setLang: (l: Lang) => void
+  setThemeMode: (m: ThemeMode) => void
+  setDialog: (d: AppState['dialog']) => void
+  seekTo: (t: number) => void
+  openLightbox: (frameIds: string[], index: number) => void
+  setLightboxIndex: (index: number) => void
+  closeLightbox: () => void
   updateConfig: (id: string, patch: Partial<ProviderConfig>) => void
   appendPresets: (list: ProviderPreset[]) => void
   resetConfig: (id: string) => void
@@ -86,6 +102,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   configs: initial.configs,
   activeProviderId: initial.activeProviderId,
   lang: initialLang(),
+  themeMode: initialThemeMode(),
+  dialog: null,
+  seekRequest: null,
+  lightbox: null,
 
   session: null,
   videoInfo: null,
@@ -105,6 +125,23 @@ export const useAppStore = create<AppState>()((set, get) => ({
       /* storage may be unavailable */
     }
   },
+
+  setThemeMode: (m) => {
+    set({ themeMode: m })
+    applyTheme(m)
+    try {
+      localStorage.setItem(THEME_KEY, m)
+    } catch {
+      /* storage may be unavailable */
+    }
+  },
+
+  setDialog: (d) => set({ dialog: d }),
+  seekTo: (t) => set((st) => ({ seekRequest: { t, n: (st.seekRequest?.n ?? 0) + 1 } })),
+  openLightbox: (frameIds, index) => set({ lightbox: { frameIds, index } }),
+  setLightboxIndex: (index) =>
+    set((st) => (st.lightbox ? { lightbox: { ...st.lightbox, index } } : {})),
+  closeLightbox: () => set({ lightbox: null }),
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id })
@@ -167,6 +204,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
       activities: [],
       running: false,
       activeSessionId: null,
+      seekRequest: null,
+      lightbox: null,
     })
   },
 
@@ -194,6 +233,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
       messages: p.messages,
       activities: [],
       running: false,
+      seekRequest: null,
+      lightbox: null,
     })
     get().setActiveSession(p.sessionId)
   },
@@ -208,4 +249,14 @@ export function getActiveProvider(): ProviderConfig {
 /** Resolve a provider preset from the store (built-in or catalog). */
 export function getPreset(id: string): ProviderPreset | undefined {
   return useAppStore.getState().presets.find((p) => p.id === id)
+}
+/** Reactive view of the active provider: its preset and effective config. */
+export function useActiveProvider(): { preset: ProviderPreset | undefined; config: ProviderConfig; ready: boolean } {
+  const presets = useAppStore((s) => s.presets)
+  const configs = useAppStore((s) => s.configs)
+  const id = useAppStore((s) => s.activeProviderId)
+  const preset = presets.find((p) => p.id === id)
+  const config = resolveProviderConfig(presets, configs, id)
+  const ready = (preset?.needsApiKey === false || config.apiKey.trim().length > 0) && config.model.trim().length > 0
+  return { preset, config, ready }
 }

@@ -150,6 +150,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     })
   }
 
+  // streamText reports provider/network failures via onError and then only
+  // rejects with a generic NoOutputGeneratedError — keep the real cause
+  let streamError: unknown
   const result = streamText({
     model,
     system,
@@ -157,6 +160,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     tools: tools as ToolSet,
     stopWhen: stepCountIs(maxSteps),
     abortSignal: signal,
+    onError: ({ error }) => {
+      streamError ??= error
+    },
     prepareStep: ({ messages }) => {
       let msgs = messages
       if (pendingImages.length > 0) {
@@ -179,14 +185,30 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     },
   })
 
-  for await (const delta of result.textStream) {
-    onTextDelta?.(delta)
+  // fullStream rather than textStream so step boundaries are visible: text a
+  // model writes between tool calls is narration — keep it a separate
+  // paragraph, or a "## heading" opening the final answer is glued to it and
+  // never renders as a heading
+  let newStep = false
+  let wroteText = false
+  for await (const part of result.fullStream) {
+    if (part.type === 'start-step') newStep = true
+    else if (part.type === 'text-delta' && part.text) {
+      if (newStep && wroteText) onTextDelta?.('\n\n')
+      newStep = false
+      wroteText = true
+      onTextDelta?.(part.text)
+    }
   }
 
   // the answer is the last step's text — intermediate steps may hold reasoning
   // while tools were still being called
-  const steps = await result.steps
-  return steps.at(-1)?.text ?? ''
+  try {
+    const steps = await result.steps
+    return steps.at(-1)?.text ?? ''
+  } catch (e) {
+    throw streamError ?? e
+  }
 }
 
 // ---------------------------------------------------------------------------

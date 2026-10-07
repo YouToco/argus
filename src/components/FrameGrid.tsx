@@ -1,46 +1,42 @@
+import { Images } from 'lucide-react'
 import { useAppStore } from '../store'
 import { formatTime } from '../lib/format'
-import { frameObjectUrl } from '../lib/frames'
 import { useT } from '../lib/i18n'
+import { FrameThumb } from './FrameThumb'
 
 export function FrameGrid() {
   const frames = useAppStore((s) => s.frames)
+  const openLightbox = useAppStore((s) => s.openLightbox)
   const t = useT()
 
-  if (frames.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 px-1 py-10 text-center">
-        <span className="mono-label text-zinc-700">frames://</span>
-        <p className="text-xs text-zinc-600">{t('frames.empty')}</p>
-        <p className="mono-label text-zinc-700">agent captures appear here</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      {frames.map((f, i) => (
-        <figure
-          key={f.id}
-          style={{ animationDelay: `${Math.min(i * 60, 600)}ms` }}
-          className="fade-in group overflow-hidden rounded-md border border-white/[0.08] bg-black/40 transition-colors duration-200 hover:border-[#3d7fff]/60"
-        >
-          <div className="overflow-hidden">
-            <img
-              src={frameObjectUrl(f)}
-              alt={`frame @ ${formatTime(f.timeSec)}`}
-              className="w-full transition duration-300 group-hover:scale-[1.04]"
-              loading="lazy"
+    <div className="p-3">
+      <div className="mb-2.5 flex items-center justify-between px-1">
+        <h2 className="label flex items-center gap-2">
+          <Images size={14} className="text-fg-4" />
+          {t('frames.title')}
+        </h2>
+        {frames.length > 0 && <span className="font-mono text-[11px] text-fg-3">{frames.length}</span>}
+      </div>
+
+      {frames.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line px-4 py-8 text-center">
+          <Images size={22} className="text-fg-4" />
+          <p className="max-w-[16rem] text-xs leading-relaxed text-fg-3">{t('frames.empty')}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {frames.map((f, i) => (
+            <FrameThumb
+              key={f.id}
+              frame={f}
+              delay={Math.min(i * 30, 400)}
+              onOpen={() => openLightbox(frames.map((x) => x.id), i)}
+              label={t('frames.open', { time: formatTime(f.timeSec) })}
             />
-          </div>
-          <figcaption className="flex items-center justify-between px-2 py-1.5">
-            <span className="font-mono text-[10px] text-[#5c93ff]">{formatTime(f.timeSec)}</span>
-            <span className="font-mono text-[10px] text-zinc-600">
-              {f.width}×{f.height}
-            </span>
-          </figcaption>
-        </figure>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   )
 }

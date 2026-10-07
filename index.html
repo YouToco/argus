@@ -1,14 +1,24 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08090b" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta
       name="description"
       content="Argus · 前端本地长视频理解 agent harness：多 provider LLM + 切帧 + 状态记忆 + 子代理，视频完全在浏览器本地处理"
     />
     <title>Argus · 长视频理解 Agent Harness</title>
+    <script>
+      // resolve the theme before first paint so there is no dark/light flash (mirrors src/lib/theme.ts)
+      try {
+        var m = localStorage.getItem('argus:theme')
+        var dark = m === 'dark' || (m !== 'light' && !matchMedia('(prefers-color-scheme: light)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        if (!dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f4f5f8')
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
