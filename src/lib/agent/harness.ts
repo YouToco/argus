@@ -185,8 +185,20 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     },
   })
 
-  for await (const delta of result.textStream) {
-    onTextDelta?.(delta)
+  // fullStream rather than textStream so step boundaries are visible: text a
+  // model writes between tool calls is narration — keep it a separate
+  // paragraph, or a "## heading" opening the final answer is glued to it and
+  // never renders as a heading
+  let newStep = false
+  let wroteText = false
+  for await (const part of result.fullStream) {
+    if (part.type === 'start-step') newStep = true
+    else if (part.type === 'text-delta' && part.text) {
+      if (newStep && wroteText) onTextDelta?.('\n\n')
+      newStep = false
+      wroteText = true
+      onTextDelta?.(part.text)
+    }
   }
 
   // the answer is the last step's text — intermediate steps may hold reasoning

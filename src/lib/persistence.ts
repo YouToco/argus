@@ -98,6 +98,14 @@ export function startAutosave(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null
   const unsub = useAppStore.subscribe((s, prev) => {
     if (!s.activeSessionId) return
+    // frames are written the moment they arrive: while a run streams, the
+    // debounce below keeps resetting, and frames pushed out of the in-memory
+    // window before the first flush would otherwise never reach IndexedDB
+    if (s.frames !== prev.frames) {
+      const known = new Set(prev.frames.map((f) => f.id))
+      const added = s.frames.filter((f) => !known.has(f.id))
+      if (added.length > 0) void db.mergeSaveFrames(s.activeSessionId, added).catch(() => {})
+    }
     if (
       s.messages === prev.messages &&
       s.frames === prev.frames &&

@@ -75,11 +75,11 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
   },
   {
     id: 'deepseek', name: 'DeepSeek', transport: 'openai-compatible',
-    defaultModel: 'deepseek-v4-flash-vision-exp', defaultBaseURL: 'https://api.deepseek.com', baseURLPlaceholder: 'https://api.deepseek.com',
-    models: ['deepseek-v4-flash-vision-exp', 'deepseek-v4-flash', 'deepseek-v4-pro'],
-    visionModels: ['deepseek-v4-flash-vision-exp'],
-    corsNote: '浏览器直连友好。视觉理解选 deepseek-v4-flash-vision-exp（2026-08 实验版，支持图片输入，带推理输出）；deepseek-v4-flash / v4-pro 为纯文本。',
-    corsNoteEn: 'Browser-friendly. For vision, choose deepseek-v4-flash-vision-exp (2026-08 experimental, image input with reasoning output); deepseek-v4-flash / v4-pro are text-only.',
+    defaultModel: 'deepseek-flash', defaultBaseURL: 'https://api.deepseek.com', baseURLPlaceholder: 'https://api.deepseek.com',
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
+    visionModels: ['deepseek-flash'],
+    corsNote: '浏览器直连友好。视觉理解选 deepseek-flash（V4.1 Flash，支持图片输入，带推理输出；旧名 deepseek-v4-flash / -vision-exp 会自动指向它）；deepseek-v4-pro 为纯文本。',
+    corsNoteEn: 'Browser-friendly. For vision, choose deepseek-flash (V4.1 Flash, image input with reasoning output; the old ids deepseek-v4-flash / -vision-exp alias to it); deepseek-v4-pro is text-only.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {

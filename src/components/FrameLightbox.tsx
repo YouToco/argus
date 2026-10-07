@@ -86,7 +86,7 @@ export function FrameLightbox() {
     >
       <div className="flex min-h-[40vh] items-center justify-center bg-black">
         {frame ? (
-          <img src={frameObjectUrl(frame)} alt={formatTime(frame.timeSec)} className="max-h-[70vh] w-auto max-w-full object-contain" />
+          <img src={frameObjectUrl(frame)} alt={formatTime(frame.timeSec)} className="max-h-[70vh] w-full object-contain" />
         ) : (
           <p className="text-sm text-white/60">{t('lightbox.missing')}</p>
         )}

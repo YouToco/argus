@@ -85,7 +85,9 @@ export function ChatPanel() {
     useAppStore.getState().clearActivities()
     void scrollToBottom()
 
-    const startFrames = useAppStore.getState().frames.length
+    // ids of every frame this run extracts (sub-agents included); slicing the
+    // store by index breaks once the in-memory window is full and starts evicting
+    const runFrameIds: string[] = []
     const startActs = useAppStore.getState().activities.length
 
     abortRef.current = new AbortController()
@@ -110,7 +112,10 @@ export function ChatPanel() {
 
       const ctx: AgentContext = {
         session,
-        addFrames: (f) => useAppStore.getState().addFrames(f),
+        addFrames: (f) => {
+          runFrameIds.push(...f.map((x) => x.id))
+          useAppStore.getState().addFrames(f)
+        },
         listFrames: () => useAppStore.getState().frames,
         getFrameById: (id) => useAppStore.getState().frames.find((fr) => fr.id === id),
         memory,
@@ -137,12 +142,10 @@ export function ChatPanel() {
         useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}\n\n${t('chat.corsHint')}`)
       }
     } finally {
-      const st = useAppStore.getState()
-      const newFrames = st.frames.slice(startFrames)
-      const newActs = st.activities.slice(startActs)
+      const newActs = useAppStore.getState().activities.slice(startActs)
       useAppStore.getState().updateMessage(asstMsg.id, {
         pending: false,
-        frameIds: newFrames.map((f) => f.id),
+        frameIds: [...new Set(runFrameIds)],
         activities: newActs,
       })
       setRunning(false)
@@ -393,8 +396,12 @@ function ProcessBlock({ activities, live }: { activities: ToolActivity[]; live: 
   const runningCount = items.filter((a) => a.status === 'running').length
   const errorCount = items.filter((a) => a.status === 'error').length
 
+  // open while the agent works, fold away once the answer is in
+  const wasLive = useRef(live)
   useEffect(() => {
     if (live) setOpen(true)
+    else if (wasLive.current) setOpen(false)
+    wasLive.current = live
   }, [live])
 
   return (

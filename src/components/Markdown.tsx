@@ -102,7 +102,8 @@ export default function Markdown({ content, streaming }: { content: string; stre
           isAnimating={streaming === true}
           caret="block"
           codeBlockMaxHeight={360}
-          tableMaxHeight={320}
+          // the chat already scrolls; a nested table scroller hides the header row
+          tableMaxHeight={0}
           components={components}
         >
           {content}
