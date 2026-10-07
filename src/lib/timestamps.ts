@@ -22,3 +22,22 @@ export function parseTimestamp(s: string): number | null {
   if (m) return Number(m[1])
   return null
 }
+
+/**
+ * A long run can leave hundreds of evidence frames, in extraction order — the
+ * coarse first pass up front. Put the frame nearest each moment the answer
+ * cites first (in the order cited, within `tolerance` seconds), then the rest
+ * by time. `cited` is how many lead.
+ */
+export function citedFirst<F extends { timeSec: number }>(frames: F[], answer: string, tolerance = 1): { frames: F[]; cited: number } {
+  const cited: F[] = []
+  for (const m of answer.matchAll(TIMESTAMP_RE)) {
+    const t = parseTimestamp(m[0])
+    if (t === null) continue
+    let best: F | undefined
+    for (const f of frames) if (!best || Math.abs(f.timeSec - t) < Math.abs(best.timeSec - t)) best = f
+    if (best && Math.abs(best.timeSec - t) <= tolerance && !cited.includes(best)) cited.push(best)
+  }
+  const rest = frames.filter((f) => !cited.includes(f)).sort((a, b) => a.timeSec - b.timeSec)
+  return { frames: [...cited, ...rest], cited: cited.length }
+}

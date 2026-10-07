@@ -160,6 +160,7 @@ const zh = {
   'chat.placeholderNoVideo': '先在左侧载入视频，再描述你要分析的需求…',
   'chat.restored': '已从本地历史恢复 · 重新载入 {name} 以继续分析',
   'chat.evidence': '证据帧 · {n}',
+  'chat.evidenceCited': '前 {n} 张是回答提到的时刻',
   'chat.sendKey': '发送',
   'chat.newlineKey': '换行',
 
@@ -348,6 +349,7 @@ const en: Record<I18nKey, string> = {
   'chat.placeholderNoVideo': 'Load a video on the left, then describe what to analyze…',
   'chat.restored': 'Restored from local history · reload {name} to continue',
   'chat.evidence': 'Evidence frames · {n}',
+  'chat.evidenceCited': 'first {n} match moments cited in the answer',
   'chat.sendKey': 'send',
   'chat.newlineKey': 'new line',
 

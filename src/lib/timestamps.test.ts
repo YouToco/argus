@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTimestamp, TIMESTAMP_RE } from './timestamps'
+import { citedFirst, parseTimestamp, TIMESTAMP_RE } from './timestamps'
 
 const find = (s: string) => [...s.matchAll(TIMESTAMP_RE)].map((m) => m[0])
 
@@ -24,5 +24,22 @@ describe('timestamp links', () => {
     expect(parseTimestamp('1m30.5s')).toBe(90.5)
     expect(parseTimestamp('1h02m3s')).toBe(3723)
     expect(parseTimestamp('hello')).toBeNull()
+  })
+})
+
+describe('evidence frames cited first', () => {
+  const at = (...ts: number[]) => ts.map((timeSec) => ({ timeSec }))
+  const times = (r: { frames: { timeSec: number }[] }) => r.frames.map((f) => f.timeSec)
+
+  it('puts the frame nearest each cited moment first, in the order cited, then the rest by time', () => {
+    const r = citedFirst(at(0, 50, 9.9, 20, 10, 30), '蓝点 20.0s 消失；绿点 10.0s 出现（9.9s 还没有）')
+    expect(times(r)).toEqual([20, 10, 9.9, 0, 30, 50])
+    expect(r.cited).toBe(3)
+  })
+
+  it('ignores moments with no frame nearby and repeats', () => {
+    const r = citedFirst(at(30, 0, 10), 'at 10s, again 10.0s, and 2:00')
+    expect(times(r)).toEqual([10, 0, 30])
+    expect(r.cited).toBe(1)
   })
 })

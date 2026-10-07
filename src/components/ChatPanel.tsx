@@ -6,6 +6,8 @@ import { memory } from '../lib/agent/memory'
 import type { AgentContext } from '../lib/agent/tools'
 import type { ChatMessage, ExtractedFrame, ToolActivity } from '../types'
 import { formatTime } from '../lib/format'
+import { citedFirst } from '../lib/timestamps'
+import { priorTurns } from '../lib/agent/history'
 import { loadFrameById } from '../lib/db'
 import { EyeIcon } from './icons'
 import { FrameThumb } from './FrameThumb'
@@ -78,6 +80,7 @@ export function ChatPanel() {
     setError(null)
     setInput('')
 
+    const history = priorTurns(useAppStore.getState().messages)
     const userMsg: ChatMessage = { id: nextId(), role: 'user', content: text }
     const asstMsg: ChatMessage = { id: nextId(), role: 'assistant', content: '', pending: true }
     useAppStore.getState().addMessage(userMsg)
@@ -125,7 +128,7 @@ export function ChatPanel() {
       await runAgent({
         model,
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: text }],
+        messages: [...history, { role: 'user', content: text }],
         context: ctx,
         maxSteps: 30,
         signal: abortRef.current.signal,
@@ -139,10 +142,20 @@ export function ChatPanel() {
       } else {
         useAppStore.getState().updateMessage(asstMsg.id, { error: true })
         const msg = (e as Error)?.message ?? String(e)
-        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}\n\n${t('chat.corsHint')}`)
+        // the CORS hint only helps when the request never got an answer — a
+        // 401 / 400 from the provider already says what is wrong
+        const status = (e as { statusCode?: unknown })?.statusCode
+        const hint = typeof status !== 'number' && /fetch|network|cors|connect/i.test(msg) ? `\n\n${t('chat.corsHint')}` : ''
+        useAppStore.getState().appendToMessage(asstMsg.id, `\n\n${t('chat.runError', { msg })}${hint}`)
       }
     } finally {
       const newActs = useAppStore.getState().activities.slice(startActs)
+      // a stopped or failed run leaves the tool calls it was in the middle of
+      // marked as running forever — close them out
+      const stopped = abortRef.current?.signal.aborted
+      for (const a of dedupeActivities(newActs)) {
+        if (a.status === 'running') newActs.push({ ...a, status: 'error', summary: stopped ? t('chat.stopped') : a.summary })
+      }
       useAppStore.getState().updateMessage(asstMsg.id, {
         pending: false,
         frameIds: [...new Set(runFrameIds)],
@@ -536,9 +549,14 @@ function Message({
   const openLightbox = useAppStore((s) => s.openLightbox)
   const isUser = message.role === 'user'
   useLazyFrames(message.frameIds, isUser)
-  const frameObjs = (message.frameIds ?? [])
-    .map((id) => frames.find((f) => f.id === id))
-    .filter((f): f is ExtractedFrame => Boolean(f))
+  const { frames: frameObjs, cited } = useMemo(
+    () =>
+      citedFirst(
+        (message.frameIds ?? []).map((id) => frames.find((f) => f.id === id)).filter((f): f is ExtractedFrame => Boolean(f)),
+        message.content,
+      ),
+    [message.frameIds, message.content, frames],
+  )
 
   if (isUser) {
     return (
@@ -587,13 +605,16 @@ function Message({
             <p className="label mb-2 flex items-center gap-1.5">
               <Images size={13} className="text-fg-4" />
               {t('chat.evidence', { n: frameObjs.length })}
+              {cited > 0 && cited < frameObjs.length && (
+                <span className="font-normal text-fg-4">· {t('chat.evidenceCited', { n: cited })}</span>
+              )}
             </p>
             <div className="scroll-thin -mx-1 flex gap-2 overflow-x-auto px-1 pb-1.5">
               {frameObjs.map((f, i) => (
                 <FrameThumb
                   key={f.id}
                   frame={f}
-                  className="h-[72px] w-32"
+                  className={`h-[72px] w-32 ${i < cited ? 'ring-1 ring-accent-line' : ''}`}
                   label={t('frames.open', { time: formatTime(f.timeSec) })}
                   onOpen={() => openLightbox(frameObjs.map((x) => x.id), i)}
                 />
