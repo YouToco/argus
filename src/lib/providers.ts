@@ -1,9 +1,3 @@
-import { createOpenAI } from '@ai-sdk/openai'
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createGoogle } from '@ai-sdk/google'
-import { generateText } from 'ai'
-import type { LanguageModel } from 'ai'
 import type { ProviderConfig, ProviderKind } from '../types'
 import type { I18nKey } from './i18n'
 
@@ -43,38 +37,38 @@ export interface ProviderPreset {
 export const BUILTIN_PRESETS: ProviderPreset[] = [
   {
     id: 'openai', name: 'OpenAI', transport: 'openai',
-    defaultModel: 'gpt-4o', defaultBaseURL: 'https://api.openai.com/v1', baseURLPlaceholder: 'https://api.openai.com/v1',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'],
-    visionModels: ['gpt-4o', 'gpt-4.1'],
+    defaultModel: 'gpt-6.1-sol', defaultBaseURL: 'https://api.openai.com/v1', baseURLPlaceholder: 'https://api.openai.com/v1',
+    models: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-terra'],
+    visionModels: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-terra'],
     corsNote: '官方 OpenAI API 会拦截浏览器跨域，直接填官方 key 会报 CORS。建议改用 OpenRouter，或把 baseURL 指向支持浏览器直连的兼容网关。',
     corsNoteEn: 'The official OpenAI API blocks browser cross-origin requests, so an official key will hit CORS errors. Consider OpenRouter instead, or point baseURL to a compatible gateway that allows direct browser access.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'anthropic', name: 'Anthropic Claude', transport: 'anthropic',
-    defaultModel: 'claude-sonnet-4-20250514', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
+    defaultModel: 'claude-sonnet-5-5', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
     baseURLPlaceholderEn: 'Leave empty for the official endpoint',
-    models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'],
-    visionModels: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'],
-    corsNote: '支持浏览器直连（已自动附加 direct-browser-access 请求头）。视觉分析用 claude-sonnet-4。',
-    corsNoteEn: 'Supports direct browser access (the direct-browser-access header is attached automatically). Use claude-sonnet-4 for vision analysis.',
+    models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5'],
+    visionModels: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5'],
+    corsNote: '支持浏览器直连（已自动附加 direct-browser-access 请求头）。视觉分析用 claude-sonnet-5-5。',
+    corsNoteEn: 'Supports direct browser access (the direct-browser-access header is attached automatically). Use claude-sonnet-5-5 for vision analysis.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'google', name: 'Google Gemini', transport: 'google',
-    defaultModel: 'gemini-2.5-flash', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
+    defaultModel: 'gemini-3.8-flash', defaultBaseURL: '', baseURLPlaceholder: '留空使用官方端点',
     baseURLPlaceholderEn: 'Leave empty for the official endpoint',
-    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-    visionModels: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-    corsNote: '支持浏览器直连。视觉分析用 gemini-2.5-flash / gemini-2.5-pro。',
-    corsNoteEn: 'Supports direct browser access. Use gemini-2.5-flash / gemini-2.5-pro for vision analysis.',
+    models: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash-lite'],
+    visionModels: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash-lite'],
+    corsNote: '支持浏览器直连。视觉分析用 gemini-3.8-flash / gemini-3.1-pro-preview。',
+    corsNoteEn: 'Supports direct browser access. Use gemini-3.8-flash / gemini-3.1-pro-preview for vision analysis.',
     badge: 'official', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'openrouter', name: 'OpenRouter', transport: 'openai-compatible',
-    defaultModel: 'openai/gpt-4o', defaultBaseURL: 'https://openrouter.ai/api/v1', baseURLPlaceholder: 'https://openrouter.ai/api/v1',
-    models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat'],
-    visionModels: ['openai/gpt-4o', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-flash'],
+    defaultModel: 'google/gemini-3.8-flash', defaultBaseURL: 'https://openrouter.ai/api/v1', baseURLPlaceholder: 'https://openrouter.ai/api/v1',
+    models: ['google/gemini-3.8-flash', 'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'qwen/qwen3.8-flash'],
+    visionModels: ['google/gemini-3.8-flash', 'openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5', 'qwen/qwen3.8-flash'],
     corsNote: '浏览器直连友好，一个 key 访问几十家模型；视觉模型需选支持 vision 的。',
     corsNoteEn: 'Browser-friendly. One key accesses dozens of models; pick a vision-capable model for vision tasks.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
@@ -90,28 +84,29 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
   },
   {
     id: 'moonshot', name: '月之暗面 Kimi', transport: 'openai-compatible',
-    defaultModel: 'moonshot-v1-8k', defaultBaseURL: 'https://api.moonshot.cn/v1', baseURLPlaceholder: 'https://api.moonshot.cn/v1',
-    models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-latest'],
-    corsNote: '浏览器直连友好。kimi-latest / 视觉模型适合后续；当前模型偏文本。',
-    corsNoteEn: 'Browser-friendly. kimi-latest / vision models are better suited; current models lean text-only.',
+    defaultModel: 'kimi-k2.6', defaultBaseURL: 'https://api.moonshot.cn/v1', baseURLPlaceholder: 'https://api.moonshot.cn/v1',
+    models: ['kimi-k2.6', 'kimi-k3'],
+    visionModels: ['kimi-k2.6', 'kimi-k3'],
+    corsNote: '浏览器直连友好。kimi-k2.6 / kimi-k3 都支持图片输入。',
+    corsNoteEn: 'Browser-friendly. kimi-k2.6 / kimi-k3 both accept image input.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'zhipu', name: '智谱 GLM', transport: 'openai-compatible',
-    defaultModel: 'glm-4-v-plus', defaultBaseURL: 'https://open.bigmodel.cn/api/paas/v4', baseURLPlaceholder: 'https://open.bigmodel.cn/api/paas/v4',
-    models: ['glm-4-v-plus', 'glm-4-plus', 'glm-4-flash'],
-    visionModels: ['glm-4-v-plus'],
-    corsNote: '浏览器直连友好。glm-4-v-plus 支持视觉。',
-    corsNoteEn: 'Browser-friendly. glm-4-v-plus supports vision.',
+    defaultModel: 'glm-5.3-flash', defaultBaseURL: 'https://open.bigmodel.cn/api/paas/v4', baseURLPlaceholder: 'https://open.bigmodel.cn/api/paas/v4',
+    models: ['glm-5.3-flash', 'glm-5.3-flashx', 'glm-5v-turbo'],
+    visionModels: ['glm-5.3-flash', 'glm-5.3-flashx', 'glm-5v-turbo'],
+    corsNote: '浏览器直连友好。glm-5.3-flash / flashx / glm-5v-turbo 支持视觉，glm-5.3 为纯文本。',
+    corsNoteEn: 'Browser-friendly. glm-5.3-flash / flashx / glm-5v-turbo support vision; glm-5.3 is text-only.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
     id: 'qwen', name: '阿里百炼 Qwen', transport: 'openai-compatible',
-    defaultModel: 'qwen-vl-max', defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', baseURLPlaceholder: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: ['qwen-vl-max', 'qwen-vl-plus', 'qwen-plus', 'qwen-max'],
-    visionModels: ['qwen-vl-max', 'qwen-vl-plus'],
-    corsNote: '浏览器直连友好。视觉用 qwen-vl-max / qwen-vl-plus。',
-    corsNoteEn: 'Browser-friendly. Use qwen-vl-max / qwen-vl-plus for vision.',
+    defaultModel: 'qwen3.8-flash', defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', baseURLPlaceholder: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.8-omni-flash'],
+    visionModels: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.8-omni-flash'],
+    corsNote: '浏览器直连友好。qwen3.8 系列都支持图片输入。',
+    corsNoteEn: 'Browser-friendly. The qwen3.8 family accepts image input.',
     badge: 'compatible', needsApiKey: true, source: 'builtin',
   },
   {
@@ -124,45 +119,6 @@ export const BUILTIN_PRESETS: ProviderPreset[] = [
     badge: 'local', needsApiKey: false, source: 'builtin',
   },
 ]
-
-export function buildModel(cfg: ProviderConfig): LanguageModel {
-  const baseURL = cfg.baseURL.trim()
-  switch (cfg.kind) {
-    case 'anthropic': {
-      const provider = createAnthropic({
-        apiKey: cfg.apiKey.trim() || undefined,
-        baseURL: baseURL || undefined,
-        headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
-      })
-      return provider.chat(cfg.model.trim())
-    }
-    case 'google': {
-      const provider = createGoogle({
-        apiKey: cfg.apiKey.trim() || undefined,
-        baseURL: baseURL || undefined,
-      })
-      return provider.chat(cfg.model.trim())
-    }
-    case 'openai-compatible': {
-      const baseURL = cfg.baseURL.trim()
-      if (!baseURL) throw new Error('该 provider 需要填写 Base URL 才能请求')
-      const provider = createOpenAICompatible({
-        name: cfg.id,
-        baseURL,
-        apiKey: cfg.apiKey.trim() || undefined,
-      })
-      return provider.chatModel(cfg.model.trim())
-    }
-    case 'openai':
-    default: {
-      const provider = createOpenAI({
-        apiKey: cfg.apiKey.trim() || undefined,
-        baseURL: baseURL || undefined,
-      })
-      return provider.chat(cfg.model.trim())
-    }
-  }
-}
 
 export function createDefaultConfig(preset: ProviderPreset): ProviderConfig {
   return {
@@ -184,32 +140,6 @@ export function resolveProviderConfig(
   if (saved) return { id, kind: preset?.transport ?? saved.kind, apiKey: saved.apiKey, baseURL: saved.baseURL, model: saved.model }
   if (preset) return { id, kind: preset.transport, apiKey: '', baseURL: preset.defaultBaseURL, model: preset.defaultModel }
   return { id, kind: 'openai', apiKey: '', baseURL: '', model: '' }
-}
-
-export interface ConnectionTestResult {
-  ok: boolean
-  latencyMs?: number
-  error?: string
-  /** i18n key for known failures (takes precedence over `error` in the UI) */
-  errorKey?: I18nKey
-}
-
-/** Sends a tiny completion to validate the key + endpoint + model. */
-export async function testConnection(cfg: ProviderConfig): Promise<ConnectionTestResult> {
-  const start = Date.now()
-  try {
-    const model = buildModel(cfg)
-    await generateText({ model, prompt: 'Reply with the single word: OK', temperature: 0 })
-    return { ok: true, latencyMs: Date.now() - start }
-  } catch (e) {
-    const msg = (e as Error)?.message ?? String(e)
-    const isCors = /fetch|CORS|Failed to fetch|NetworkError|cross-origin/i.test(msg)
-    return {
-      ok: false,
-      error: msg,
-      errorKey: isCors ? 'provider.error.cors' : undefined,
-    }
-  }
 }
 
 export interface FetchModelsResult {

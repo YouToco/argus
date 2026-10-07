@@ -9,7 +9,7 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 [![Deploy](https://github.com/YouToco/argus/actions/workflows/deploy.yml/badge.svg)](https://github.com/YouToco/argus/actions/workflows/deploy.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5-black.svg)](https://ai-sdk.dev)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-7-black.svg)](https://ai-sdk.dev)
 
 [在线体验](https://argus.zhuoqidev.com) · [快速开始](#快速开始) · [工作原理](#工作原理) · [测试](#测试)
 
@@ -26,7 +26,11 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 - **纯前端、零后端**：视频经本地 Object URL 加载，文件从不上传。MP4 / MOV / MKV / WebM 走 mediabunny（WebCodecs 硬解顺序抽帧）；AVI / WMV / FLV / TS 等浏览器解不了的格式，首次拖入时按需懒加载 ffmpeg.wasm（约 32MB，从 unpkg/jsdelivr 直取，不入本仓库）在浏览器内转码为 H.264 MP4 后进入同一管线——用户无需安装任何东西。
 - **BYOK 多 provider**：基于 [Vercel AI SDK](https://ai-sdk.dev)，一套代码支持 OpenAI 兼容端点（OpenRouter / DeepSeek / Kimi / 智谱 / Ollama …）、Anthropic、Gemini；填完 API Key **自动拉取端点模型列表**，下拉即选。
 - **专业 Agent 工作流**：粗扫 → 锁定区间 → 加密细看 → 放大确认的分层策略；`remember/recall` 状态记忆防长上下文遗忘；`spawn_subagent` 把长片段派给子代理并行细看。
+- **证据一点就到**：左侧内置预览播放器，时间轴标出 agent 看过的每一帧；回答里的时间戳（`24.8s`、`1:05`、`1m30s`）和证据帧点一下就跳到那一刻，帧图可放大、用 ←/→ 逐张翻看。
 - **过程可视化**：回答上方是可折叠的工作过程区——每个工具调用的参数摘要、结果、状态一目了然，子代理步骤嵌套展示；回答用 Markdown 渲染。
+- **上手零门槛**：空状态给出「配置模型 → 载入视频 → 描述需求」三步引导和示例问题；手边没视频可一键载入示例视频。
+- **深色 / 浅色主题 + 中英双语**：主题可跟随系统或手动切换，界面文案全部随语言切换；移动端布局可用。
+- **首屏轻量**：AI SDK 与各 provider、mediabunny、Markdown 渲染（streamdown + Shiki）都按需加载，首屏 JS gzip 约 95KB。
 - **本地持久化**：分析会话（对话 / 帧 / 记忆）自动存入 IndexedDB，刷新不丢；历史记录支持单条恢复、单条删除、一键清空。
 - **长视频内存治理**：内存只保留最近 200 帧（旧帧从 IndexedDB 懒加载）；发给模型的上下文只保留最近 3 批帧图，更早的替换为可回查的文字指针——小时级视频不会撑爆标签页内存或上下文窗口。
 - **凭证不出本机**：API Key 只存浏览器 localStorage，请求由浏览器直发你填写的端点。
@@ -47,7 +51,7 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 
 ## 快速开始
 
-**在线版**：打开 [argus.zhuoqidev.com](https://argus.zhuoqidev.com)，右上角填入任意 provider 的 API Key，左侧拖入本地视频即可。
+**在线版**：打开 [argus.zhuoqidev.com](https://argus.zhuoqidev.com)，右上角「配置模型」填入任意 provider 的 API Key，左侧拖入本地视频（或点「用示例视频试试」）即可。
 
 **本地开发**：
 
@@ -59,7 +63,7 @@ npm run typecheck  # tsc --noEmit
 npm run build      # 类型检查 + 生产构建（产物在 dist/）
 ```
 
-推荐使用带视觉能力的模型（如 `deepseek-v4-flash-vision-exp`、`gpt-4o`、`gemini-2.5-flash`、`qwen-vl-max`）——纯文本模型看不到帧图，无法完成分析。
+推荐使用带视觉能力的模型（如 `deepseek-v4-flash-vision-exp`、`gemini-3.8-flash`、`claude-sonnet-5-5`、`qwen3.8-flash`）——纯文本模型看不到帧图，无法完成分析。
 
 ## 工作原理
 

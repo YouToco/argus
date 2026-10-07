@@ -150,6 +150,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     })
   }
 
+  // streamText reports provider/network failures via onError and then only
+  // rejects with a generic NoOutputGeneratedError — keep the real cause
+  let streamError: unknown
   const result = streamText({
     model,
     system,
@@ -157,6 +160,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     tools: tools as ToolSet,
     stopWhen: stepCountIs(maxSteps),
     abortSignal: signal,
+    onError: ({ error }) => {
+      streamError ??= error
+    },
     prepareStep: ({ messages }) => {
       let msgs = messages
       if (pendingImages.length > 0) {
@@ -185,8 +191,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
 
   // the answer is the last step's text — intermediate steps may hold reasoning
   // while tools were still being called
-  const steps = await result.steps
-  return steps.at(-1)?.text ?? ''
+  try {
+    const steps = await result.steps
+    return steps.at(-1)?.text ?? ''
+  } catch (e) {
+    throw streamError ?? e
+  }
 }
 
 // ---------------------------------------------------------------------------
