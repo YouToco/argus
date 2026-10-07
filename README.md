@@ -19,7 +19,7 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 
 名字取自希腊神话百眼巨人 **Argus Panoptes**（全视守望者）。你给 Argus 一段本地视频和一句话需求——"数一下这段监控里有几个人""找出红色物品出现的时间"——它会自己规划抽帧策略、逐段观察、记录状态、必要时派子代理细看，最后给出**带关键帧时间戳证据**的结论。
 
-![主页](docs/screenshots/home-empty.jpg)
+![回答里的时间戳一点，左侧播放器就跳到那一刻](docs/screenshots/answer-seek.jpg)
 
 ## 特性
 
@@ -37,17 +37,23 @@ Frontend-local long-video understanding agent harness. No backend, no uploads �
 
 ## 使用过程
 
-| 分析回答（Markdown + 证据帧条） | 工作过程区（90 步工具调用可审计） |
-| --- | --- |
-| ![分析回答](docs/screenshots/analysis-answer.jpg) | ![过程区](docs/screenshots/process-expanded.jpg) |
+> 下面的截图都来自一次真实分析：DeepSeek `deepseek-flash` 看仓库自带的 3 分钟示例视频（不到 2 分钟跑完，花费约 ¥0.2）。
 
-| 子代理并行细看（28 个子步骤嵌套） | 模型配置（自动拉取模型列表） |
+| 上手引导（三步 + 示例问题） | 分析回答（Markdown 表格 + 可点时间戳） |
 | --- | --- |
-| ![子代理](docs/screenshots/subagent-trace.jpg) | ![配置弹窗](docs/screenshots/config-dialog.jpg) |
+| ![上手引导](docs/screenshots/onboarding.jpg) | ![分析回答](docs/screenshots/analysis-answer.jpg) |
 
-| 历史记录（恢复 / 单删 / 清空） |
-| --- |
-| ![历史记录](docs/screenshots/history-panel.jpg) |
+| 工作过程区（主代理 9 步 + 子代理 45 步可审计） | 子代理派发与回报（入参 / 结论） |
+| --- | --- |
+| ![过程区](docs/screenshots/process-expanded.jpg) | ![子代理](docs/screenshots/subagent-trace.jpg) |
+
+| 证据帧放大（←/→ 翻看、跳到此刻） | 浅色主题 |
+| --- | --- |
+| ![帧放大](docs/screenshots/frame-lightbox.jpg) | ![浅色主题](docs/screenshots/light-theme.jpg) |
+
+| 模型配置（自动拉取模型列表） | 历史记录（恢复 / 单删 / 清空） |
+| --- | --- |
+| ![配置弹窗](docs/screenshots/config-dialog.jpg) | ![历史记录](docs/screenshots/history-panel.jpg) |
 
 ## 快速开始
 
@@ -63,7 +69,7 @@ npm run typecheck  # tsc --noEmit
 npm run build      # 类型检查 + 生产构建（产物在 dist/）
 ```
 
-推荐使用带视觉能力的模型（如 `deepseek-v4-flash-vision-exp`、`gemini-3.8-flash`、`claude-sonnet-5-5`、`qwen3.8-flash`）——纯文本模型看不到帧图，无法完成分析。
+推荐使用带视觉能力的模型（如 `deepseek-flash`、`gemini-3.8-flash`、`claude-sonnet-5-5`、`qwen3.8-flash`）——纯文本模型看不到帧图，无法完成分析。
 
 ## 工作原理
 
