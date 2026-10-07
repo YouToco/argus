@@ -87,13 +87,13 @@ function Header() {
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-accent text-accent-fg shadow-[0_6px_20px_-6px_var(--accent)]">
           <EyeIcon size={20} />
         </span>
-        <div className="min-w-0">
-          <h1 className="text-[17px] font-bold leading-tight tracking-tight">Argus</h1>
+        <div className="min-w-0 max-[359px]:hidden">
+          <h1 className="truncate text-[17px] font-bold leading-tight tracking-tight">Argus</h1>
           <p className="hidden truncate text-xs text-fg-3 sm:block">{t('app.subtitle')}</p>
         </div>
       </div>
 
-      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         {running && (
           <span className="chip mr-1 hidden border-accent-line bg-accent-soft text-accent-text md:inline-flex">
             <span className="status-dot h-1.5 w-1.5 rounded-full bg-accent" />
@@ -101,7 +101,17 @@ function Header() {
           </span>
         )}
 
-        <div className="flex rounded-lg border border-line p-0.5" role="group" aria-label={t('app.language')}>
+        {/* phones: one button that switches to the other language */}
+        <button
+          type="button"
+          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+          className="btn btn-ghost h-8 w-8 text-xs font-semibold sm:hidden"
+          title={t('app.language')}
+          aria-label={t('app.language')}
+        >
+          {lang === 'zh' ? 'EN' : '中'}
+        </button>
+        <div className="hidden rounded-lg border border-line p-0.5 sm:flex" role="group" aria-label={t('app.language')}>
           {(['zh', 'en'] as const).map((l) => (
             <button
               key={l}
@@ -127,7 +137,7 @@ function Header() {
           <ThemeIcon size={15} />
         </button>
 
-        <button type="button" onClick={() => setDialog('history')} className="btn btn-ghost h-8 px-2.5 text-xs" title={t('app.historyTip')}>
+        <button type="button" onClick={() => setDialog('history')} className="btn btn-ghost h-8 w-8 px-0 text-xs sm:w-auto sm:px-2.5" title={t('app.historyTip')}>
           <History size={15} />
           <span className="hidden sm:inline">{t('app.history')}</span>
         </button>
@@ -135,7 +145,7 @@ function Header() {
         <button
           type="button"
           onClick={() => setDialog('provider')}
-          className={`btn h-8 max-w-[46vw] px-3 text-xs ${ready ? 'btn-ghost' : 'btn-primary'}`}
+          className={`btn h-8 max-w-[46vw] px-2 text-xs sm:px-3 ${ready ? 'btn-ghost' : 'btn-primary'}`}
           title={t('app.modelSettings')}
         >
           {ready ? (

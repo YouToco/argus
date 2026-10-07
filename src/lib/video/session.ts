@@ -371,8 +371,14 @@ export class VideoSession {
     if (this.bunny && !this.bunnyBroken) {
       try {
         const out: ExtractedFrame[] = []
+        let lastTs = Number.NaN
         for await (const wrapped of this.bunny.sink.canvasesAtTimestamps(sorted)) {
           if (!wrapped) continue
+          // a step shorter than the video's frame interval lands on the same
+          // decoded frame again — sending the model the same image twice only
+          // costs tokens
+          if (wrapped.timestamp === lastTs) continue
+          lastTs = wrapped.timestamp
           out.push(await this.encode(wrapped.canvas as HTMLCanvasElement, wrapped.timestamp, maxWidth, quality))
         }
         if (out.length > 0) return out
