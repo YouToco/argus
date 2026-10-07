@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelMessage } from 'ai'
-import { KEEP_IMAGE_BATCHES, pruneOldImages } from './harness'
+import { isChineseQuestion, KEEP_IMAGE_BATCHES, pruneOldImages } from './harness'
 
 function textMsg(text: string): ModelMessage {
   return { role: 'user', content: text }
@@ -53,5 +53,16 @@ describe('pruneOldImages', () => {
     const out = pruneOldImages(msgs)
     expect(out[0]).toBe(msgs[0])
     expect(out[2]).toBe(msgs[2])
+  })
+})
+
+describe('isChineseQuestion', () => {
+  it('tells Chinese questions from others', () => {
+    expect(isChineseQuestion('画面里有几个点？')).toBe(true)
+    expect(isChineseQuestion('视频里 red car 什么时候出现')).toBe(true)
+    expect(isChineseQuestion('How many dots appear, and when?')).toBe(false)
+    expect(isChineseQuestion('¿Cuántos puntos aparecen?')).toBe(false)
+    expect(isChineseQuestion('赤い車はいつ出ますか')).toBe(false)
+    expect(isChineseQuestion('빨간 차는 언제 나와요')).toBe(false)
   })
 })

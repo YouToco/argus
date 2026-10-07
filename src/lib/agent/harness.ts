@@ -24,6 +24,30 @@ export const SYSTEM_PROMPT = `你是 Argus，一个在浏览器里本地分析�
 
 export const SUBAGENT_PROMPT = `你是 Argus 的子代理，负责分析视频中一个指定的时间段。你会自行调用抽帧工具观察画面，然后用几句精简的话给出结论（发现什么、关键时间点、与目标的匹配程度），语言与任务描述一致。不要长篇大论，也不要调用 spawn_subagent。`
 
+/**
+ * Everything the model reads from us — this prompt, tool results, frame notes
+ * — is Chinese, and a "reply in the user's language" rule alone loses to all
+ * that context: a real run answered an English question in Chinese. So for a
+ * question that isn't Chinese the rule is restated in English at the end of
+ * the system prompt, and the frame note is worded in English too.
+ */
+export const NON_CHINESE_REPLY_RULE = `LANGUAGE: the user's question is not in Chinese. Write everything you say in the language of that question — the short notes between tool calls and the final answer, tables and headings included. The instructions above and the tool results are in Chinese for internal reasons only; they must not change the language you reply in.`
+
+/** Han characters and no kana / hangul — Japanese and Korean also use Han */
+export function isChineseQuestion(text: string): boolean {
+  return /[\u4e00-\u9fff]/.test(text) && !/[\u3040-\u30ff\uac00-\ud7af]/.test(text)
+}
+
+function lastUserText(messages: ModelMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'user') continue
+    if (typeof m.content === 'string') return m.content
+    return m.content.map((p) => (p.type === 'text' ? p.text : '')).join(' ')
+  }
+  return ''
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -118,6 +142,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
     onActivity,
   } = opts
 
+  const chinese = isChineseQuestion(lastUserText(opts.messages))
+
   // frames produced by tool executions, handed to the model before the next step
   let pendingImages: { dataUrl: string; label: string }[] = []
 
@@ -157,7 +183,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
   let streamError: unknown
   const result = streamText({
     model,
-    system,
+    system: chinese ? system : `${system}\n\n${NON_CHINESE_REPLY_RULE}`,
     messages: opts.messages,
     tools: tools as ToolSet,
     stopWhen: stepCountIs(maxSteps),
@@ -175,7 +201,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<string> {
             content: [
               {
                 type: 'text' as const,
-                text: `以下是你刚才通过抽帧/放大得到的 ${pendingImages.length} 张画面，请仔细观察后继续分析：`,
+                text: chinese
+                  ? `以下是你刚才通过抽帧/放大得到的 ${pendingImages.length} 张画面，请仔细观察后继续分析：`
+                  : `Here are the ${pendingImages.length} frames you just extracted or zoomed into. Look at them carefully, then continue:`,
               },
               ...pendingImages.map((img) => dataUrlToFilePart(img.dataUrl)),
             ],
