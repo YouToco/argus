@@ -26,7 +26,7 @@ minimum_new_days=${CERT_MIN_NEW_DAYS:-30}
 
 domain=argus.zhuoqidev.com
 edge=argus.zhuoqidev.com.w.kunlunaq.com
-acme_commit=3661fd86b6304115e42f43910e6dd452ab9866d6
+acme_commit=807da6498377ee5e0cf43a78091f46f12dc59a89 # 3.1.6
 
 work_dir=$(mktemp -d "$RUNNER_TEMP/argus-cert.XXXXXX")
 aliyun_config=$work_dir/aliyun-config.json
