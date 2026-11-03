@@ -14,7 +14,7 @@ require_env() {
 
 require_env \
   ALIYUN_BIN ALIYUN_ACCESS_KEY_ID ALIYUN_ACCESS_KEY_SECRET \
-  ACME_ACCOUNT_EMAIL RUNNER_TEMP
+  ACME_ACCOUNT_EMAIL RUNNER_TEMP CERT_DOMAIN CERT_EDGE
 [[ -x $ALIYUN_BIN ]] || {
   echo "pinned Alibaba Cloud CLI is missing: $ALIYUN_BIN" >&2
   exit 1
@@ -24,11 +24,21 @@ renew_threshold_days=${CERT_RENEW_THRESHOLD_DAYS:-30}
 minimum_new_days=${CERT_MIN_NEW_DAYS:-30}
 [[ $renew_threshold_days =~ ^[0-9]+$ && $minimum_new_days =~ ^[0-9]+$ ]]
 
-domain=argus.zhuoqidev.com
-edge=argus.zhuoqidev.com.w.kunlunaq.com
+# Each subdomain is its own Alibaba Cloud CDN domain with its own certificate.
+domain=$CERT_DOMAIN
+edge=$CERT_EDGE
+[[ $domain =~ ^[a-z0-9-]+\.zhuoqidev\.com$ ]] || {
+  echo "unexpected certificate domain: $domain" >&2
+  exit 1
+}
+[[ $edge == "$domain".* ]] || {
+  echo "CDN edge $edge does not belong to $domain" >&2
+  exit 1
+}
+label=${domain%%.*}
 acme_commit=807da6498377ee5e0cf43a78091f46f12dc59a89 # 3.1.6
 
-work_dir=$(mktemp -d "$RUNNER_TEMP/argus-cert.XXXXXX")
+work_dir=$(mktemp -d "$RUNNER_TEMP/$label-cert.XXXXXX")
 aliyun_config=$work_dir/aliyun-config.json
 cleanup() {
   local status=$?
@@ -166,7 +176,7 @@ echo "new certificate fingerprint=$local_fingerprint days=$local_days"
   --DomainName "$domain" \
   --SSLProtocol on \
   --CertType upload \
-  --CertName "argus-le-$(date -u +%Y%m%d)" \
+  --CertName "$label-le-$(date -u +%Y%m%d)" \
   --SSLPub "$(<"$fullchain")" \
   --SSLPri "$(<"$private_key")" \
   --config-path "$aliyun_config" \
