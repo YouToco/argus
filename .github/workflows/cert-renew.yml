@@ -15,8 +15,19 @@ concurrency:
 
 jobs:
   renew:
+    name: Renew ${{ matrix.domain }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    strategy:
+      # One failing domain must not hide or cancel the other's renewal.
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - domain: argus.zhuoqidev.com
+            edge: argus.zhuoqidev.com.w.kunlunaq.com
+          - domain: vane.zhuoqidev.com
+            edge: vane.zhuoqidev.com.w.kunlunaq.com
 
     steps:
       - name: Check out trusted default-branch code
@@ -35,4 +46,6 @@ jobs:
           ACME_ACCOUNT_EMAIL: ${{ secrets.ACME_ACCOUNT_EMAIL }}
           CERT_RENEW_THRESHOLD_DAYS: "30"
           CERT_MIN_NEW_DAYS: "30"
+          CERT_DOMAIN: ${{ matrix.domain }}
+          CERT_EDGE: ${{ matrix.edge }}
         run: bash scripts/renew-cert.sh
